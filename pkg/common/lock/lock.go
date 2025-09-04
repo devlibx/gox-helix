@@ -1,6 +1,9 @@
 package lock
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Locker is the interface that wraps the basic lock and unlock methods.
 type Locker interface {
@@ -13,11 +16,14 @@ type Locker interface {
 }
 
 type AcquireRequest struct {
+	LockKey string
 	OwnerID string
+	TTL     time.Duration
 }
 
 type AcquireResponse struct {
-	OwnerID string
+	OwnerID  string
+	Acquired bool
 }
 
 type ReleaseRequest struct {

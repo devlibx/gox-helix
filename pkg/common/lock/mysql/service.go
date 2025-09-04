@@ -17,11 +17,41 @@ type service struct {
 	Queries *helixMysql.Queries
 }
 
-func (s service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*lock.AcquireResponse, error) {
-	return nil, nil
+func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*lock.AcquireResponse, error) {
+	// Calculate expiration time
+	now := s.Now()
+	expiresAt := now.Add(request.TTL)
+
+	// Try to acquire the lock using upsert with conditional update
+	result, err := s.Queries.TryAcquireLock(ctx, helixMysql.TryAcquireLockParams{
+		LockKey:   request.LockKey,
+		OwnerID:   request.OwnerID,
+		ExpiresAt: expiresAt,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to try acquire lock: %w", err)
+	}
+
+	// Check if lock was successfully acquired
+	// For INSERT ... ON DUPLICATE KEY UPDATE:
+	// - RowsAffected = 1 if new row inserted (lock acquired)
+	// - RowsAffected = 2 if existing row updated (lock acquired after expiration)
+	// - RowsAffected = 0 if no change made (lock held by another owner and not expired)
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	acquired := rowsAffected > 0
+
+	return &lock.AcquireResponse{
+		OwnerID:  request.OwnerID,
+		Acquired: acquired,
+	}, nil
 }
 
-func (s service) Release(ctx context.Context, request *lock.ReleaseRequest) (*lock.ReleaseResponse, error) {
+func (s *service) Release(ctx context.Context, request *lock.ReleaseRequest) (*lock.ReleaseResponse, error) {
 	return nil, nil
 }
 

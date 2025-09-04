@@ -24,6 +24,12 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.checkLockOwnershipStmt, err = db.PrepareContext(ctx, checkLockOwnership); err != nil {
+		return nil, fmt.Errorf("error preparing query CheckLockOwnership: %w", err)
+	}
+	if q.tryAcquireLockStmt, err = db.PrepareContext(ctx, tryAcquireLock); err != nil {
+		return nil, fmt.Errorf("error preparing query TryAcquireLock: %w", err)
+	}
 	if q.upsertLockStmt, err = db.PrepareContext(ctx, upsertLock); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertLock: %w", err)
 	}
@@ -32,6 +38,16 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.checkLockOwnershipStmt != nil {
+		if cerr := q.checkLockOwnershipStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing checkLockOwnershipStmt: %w", cerr)
+		}
+	}
+	if q.tryAcquireLockStmt != nil {
+		if cerr := q.tryAcquireLockStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing tryAcquireLockStmt: %w", cerr)
+		}
+	}
 	if q.upsertLockStmt != nil {
 		if cerr := q.upsertLockStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertLockStmt: %w", cerr)
@@ -74,15 +90,19 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db             DBTX
-	tx             *sql.Tx
-	upsertLockStmt *sql.Stmt
+	db                     DBTX
+	tx                     *sql.Tx
+	checkLockOwnershipStmt *sql.Stmt
+	tryAcquireLockStmt     *sql.Stmt
+	upsertLockStmt         *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:             tx,
-		tx:             tx,
-		upsertLockStmt: q.upsertLockStmt,
+		db:                     tx,
+		tx:                     tx,
+		checkLockOwnershipStmt: q.checkLockOwnershipStmt,
+		tryAcquireLockStmt:     q.tryAcquireLockStmt,
+		upsertLockStmt:         q.upsertLockStmt,
 	}
 }

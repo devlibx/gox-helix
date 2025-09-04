@@ -7,8 +7,74 @@ package helixMysql
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
+
+const checkLockOwnership = `-- name: CheckLockOwnership :one
+SELECT owner_id, expires_at, status
+FROM helix_locks
+WHERE lock_key = ? AND status = 'active'
+ORDER BY updated_at DESC
+LIMIT 1
+`
+
+type CheckLockOwnershipRow struct {
+	OwnerID   string           `json:"owner_id"`
+	ExpiresAt time.Time        `json:"expires_at"`
+	Status    HelixLocksStatus `json:"status"`
+}
+
+// CheckLockOwnership
+//
+//	SELECT owner_id, expires_at, status
+//	FROM helix_locks
+//	WHERE lock_key = ? AND status = 'active'
+//	ORDER BY updated_at DESC
+//	LIMIT 1
+func (q *Queries) CheckLockOwnership(ctx context.Context, lockKey string) (*CheckLockOwnershipRow, error) {
+	row := q.queryRow(ctx, q.checkLockOwnershipStmt, checkLockOwnership, lockKey)
+	var i CheckLockOwnershipRow
+	err := row.Scan(&i.OwnerID, &i.ExpiresAt, &i.Status)
+	return &i, err
+}
+
+const tryAcquireLock = `-- name: TryAcquireLock :execresult
+INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
+VALUES (?, ?, ?, 'active')
+ON DUPLICATE KEY UPDATE
+    owner_id = CASE 
+        WHEN expires_at <= NOW() THEN VALUES(owner_id)
+        ELSE owner_id
+    END,
+    expires_at = CASE 
+        WHEN expires_at <= NOW() THEN VALUES(expires_at)
+        ELSE expires_at
+    END
+`
+
+type TryAcquireLockParams struct {
+	LockKey   string    `json:"lock_key"`
+	OwnerID   string    `json:"owner_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// TryAcquireLock
+//
+//	INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
+//	VALUES (?, ?, ?, 'active')
+//	ON DUPLICATE KEY UPDATE
+//	    owner_id = CASE
+//	        WHEN expires_at <= NOW() THEN VALUES(owner_id)
+//	        ELSE owner_id
+//	    END,
+//	    expires_at = CASE
+//	        WHEN expires_at <= NOW() THEN VALUES(expires_at)
+//	        ELSE expires_at
+//	    END
+func (q *Queries) TryAcquireLock(ctx context.Context, arg TryAcquireLockParams) (sql.Result, error) {
+	return q.exec(ctx, q.tryAcquireLockStmt, tryAcquireLock, arg.LockKey, arg.OwnerID, arg.ExpiresAt)
+}
 
 const upsertLock = `-- name: UpsertLock :exec
 INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
