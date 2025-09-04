@@ -1,9 +1,0 @@
-version: "2"
-sql:
-  - engine: "mysql"
-    queries: "queries.sql"
-    schema: "schema.sql"
-    gen:
-      go:
-        package: "mysql"
-        out: "."

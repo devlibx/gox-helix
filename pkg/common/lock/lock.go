@@ -6,11 +6,22 @@ import "context"
 type Locker interface {
 	// Acquire acquires the lock. If the lock is already held by another owner,
 	// it will wait until the lock is released.
-	Acquire(ctx context.Context, key, ownerID string) error
+	Acquire(ctx context.Context, request *AcquireRequest) (*AcquireResponse, error)
 
 	// Release releases the lock.
-	Release(ctx context.Context, key, ownerID string) error
+	Release(ctx context.Context, request *ReleaseRequest) (*ReleaseResponse, error)
+}
 
-	// Renew renews the lock.
-	Renew(ctx context.Context, key, ownerID string) error
+type AcquireRequest struct {
+	OwnerID string
+}
+
+type AcquireResponse struct {
+	OwnerID string
+}
+
+type ReleaseRequest struct {
+}
+
+type ReleaseResponse struct {
 }
