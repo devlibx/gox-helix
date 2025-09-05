@@ -334,6 +334,8 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_Expired_Success() {
 	// Same owner tries to acquire again - should succeed with incremented epoch
 	now := s.mockCF.Now()
 	s.mockCF.SetTime(now.Add(20 * time.Minute))
+	defer s.mockCF.SetTime(now)
+
 	response2, err := s.service.Acquire(ctx, request)
 	s.Assert().NoError(err)
 	s.Assert().True(response2.Acquired, "Lock should be acquired")
@@ -350,9 +352,9 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_Expired_Success() {
 
 func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 	ctx := context.Background()
-	lockKey := "test-different-owner"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
 	ttl := 5 * time.Minute
 
 	// Owner1 acquires lock
@@ -362,12 +364,10 @@ func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 		TTL:     ttl,
 	}
 	response1, err := s.service.Acquire(ctx, request1)
-	response1 = s.handleServiceResponse(response1, err, "First acquisition")
-	if response1 == nil {
-		s.T().Skip("Skipping test due to service bug in first acquisition")
-		return
-	}
-	s.Assert().True(response1.Acquired, "First lock should be acquired")
+	s.Assert().NoError(err)
+	s.Assert().True(response1.Acquired, "Lock should be acquired")
+	s.Assert().Equal(owner1, response1.OwnerID, "Owner ID should match")
+	s.Assert().Equal(int64(1), response1.Epoch, "New lock should start with epoch 1")
 
 	// Owner2 tries to acquire the same active lock - should fail
 	request2 := &lock.AcquireRequest{
@@ -376,13 +376,10 @@ func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 		TTL:     ttl,
 	}
 	response2, err := s.service.Acquire(ctx, request2)
-	response2 = s.handleServiceResponse(response2, err, "Second acquisition")
-	if response2 == nil {
-		s.T().Skip("Skipping test due to service bug in second acquisition")
-		return
-	}
+	s.Assert().NoError(err)
 	s.Assert().False(response2.Acquired, "Second lock should NOT be acquired")
-	s.Assert().Equal(owner2, response2.OwnerID, "Response should contain requesting owner ID")
+	s.Assert().Equal(owner1, response2.OwnerID, "Response should contain requesting owner ID")
+	s.Assert().Equal(int64(1), response2.Epoch, "New lock should start with epoch 1")
 
 	// Verify database state unchanged - original owner should still hold lock
 	dbRecord, err := s.getLockFromDB(lockKey)

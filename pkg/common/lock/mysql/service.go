@@ -25,6 +25,7 @@ func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*l
 
 	// Capture current lock first
 	currentLock, err := s.Queries.GetLockByLockKey(ctx, request.LockKey)
+	_ = currentLock
 	if errors2.Is(err, sql.ErrNoRows) {
 		err = nil
 	} else if err != nil {
@@ -54,11 +55,6 @@ func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*l
 			Acquired: true,
 			Epoch:    lockAfterUpsert.Epoch,
 		}, nil
-	} else if currentLock != nil && currentLock.OwnerID != request.OwnerID {
-		// Case where new owner is elected
-		if lockAfterUpsert.Epoch <= currentLock.Epoch {
-			return nil, errors.New("failed to acquire lock during upsert: lock_key=%s", request.LockKey)
-		}
 	}
 
 	return &lock.AcquireResponse{
