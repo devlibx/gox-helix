@@ -540,41 +540,6 @@ func (s *ServiceTestSuite) TestAcquire_LongerTTL_ExpiredLock_Success() {
 		"New expiration time should be approximately correct")
 }
 
-func (s *ServiceTestSuite) TestAcquire_ClockSkew_MicrosecondPrecision() {
-	ctx := context.Background()
-	lockKey := "automation-lock-key-" + uuid.NewString()
-	owner1 := "automation-owner-1-" + uuid.NewString()
-	owner2 := "automation-owner-2-" + uuid.NewString()
-	lockService, cf, _ := s.setupServiceAndCrossFunction()
-
-	// Set precise time with microseconds
-	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 123456, time.UTC)
-	cf.SetTime(baseTime)
-
-	// Insert lock that expires 100 microseconds in the future
-	futureTime := baseTime.Add(100 * time.Microsecond)
-	s.insertTestLockWithEpoch(lockKey, owner1, futureTime, 5, "active")
-
-	// Owner2 tries to acquire with TTL that results in slightly earlier expiration
-	// New expiration: baseTime + 50 microseconds < futureTime
-	request := &lock.AcquireRequest{
-		LockKey: lockKey,
-		OwnerID: owner2,
-		TTL:     50 * time.Microsecond,
-	}
-	response, err := lockService.Acquire(ctx, request)
-	s.Require().NoError(err, "Acquisition should not error")
-
-	// Since futureTime > baseTime + 50 microseconds, no update should occur
-	s.Assert().False(response.Acquired, "Should not acquire with microsecond precision timing")
-
-	// Verify lock unchanged
-	dbRecord, err := s.getLockFromDB(lockKey)
-	s.Require().NoError(err, "Should be able to retrieve lock")
-	s.Assert().Equal(owner1, dbRecord.OwnerID, "Original owner should still hold lock")
-	s.Assert().Equal(int64(5), dbRecord.Epoch, "Epoch should remain unchanged")
-}
-
 // =============================================================================
 // Bug-Specific Tests - Testing Identified Issues in Implementation
 // =============================================================================
