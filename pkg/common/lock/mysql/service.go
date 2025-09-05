@@ -3,7 +3,6 @@ package helixLock
 import (
 	"context"
 	"database/sql"
-	errors2 "errors"
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
@@ -22,21 +21,15 @@ func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*l
 	// Calculate expiration time
 	now := s.Now()
 	expiresAt := now.Add(request.TTL)
-
-	// Capture current lock first
-	currentLock, err := s.Queries.GetLockByLockKey(ctx, request.LockKey)
-	_ = currentLock
-	if errors2.Is(err, sql.ErrNoRows) {
-		err = nil
-	} else if err != nil {
-		return nil, errors.Wrap(err, "failed to acquire lock: lock_key=%s", request.LockKey)
-	}
-
+	
 	// Try to upsert the lock
-	err = s.Querier.TryUpsertLock(ctx, helixMysql.TryUpsertLockParams{
-		LockKey:   request.LockKey,
-		OwnerID:   request.OwnerID,
-		ExpiresAt: expiresAt,
+	err := s.Querier.TryUpsertLock(ctx, helixMysql.TryUpsertLockParams{
+		LockKey:     request.LockKey,
+		OwnerID:     request.OwnerID,
+		ExpiresAt:   expiresAt,
+		ExpiresAt_2: expiresAt,
+		ExpiresAt_3: expiresAt,
+		ExpiresAt_4: expiresAt,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to acquire lock during upsert: lock_key=%s", request.LockKey)

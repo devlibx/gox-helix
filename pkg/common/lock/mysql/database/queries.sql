@@ -8,7 +8,6 @@ WHERE lock_key = ?
 INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
 VALUES (?, ?, ?, 1, 'active')
 ON DUPLICATE KEY
-    UPDATE expires_at = (@orig_expires := expires_at),
-           expires_at = IF(@orig_expires < VALUES(expires_at), VALUES(expires_at), @orig_expires),
-           owner_id   = IF(@orig_expires < VALUES(expires_at), VALUES(owner_id), owner_id),
-           epoch      = IF(@orig_expires < VALUES(expires_at), epoch + 1, epoch);
+    UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(owner_id), owner_id),
+           expires_at = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(expires_at), expires_at),
+           epoch      = IF(owner_id = VALUES(owner_id) OR expires_at < ?, epoch + 1, epoch)

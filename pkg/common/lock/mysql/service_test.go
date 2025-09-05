@@ -53,10 +53,8 @@ func (m *MockCrossFunction) AdvanceTime(duration time.Duration) {
 
 type ServiceTestSuite struct {
 	suite.Suite
-	service lock.Locker
-	mockCF  *MockCrossFunction
-	db      *sql.DB
-	config  *MySqlConfig
+	db     *sql.DB
+	config *MySqlConfig
 }
 
 func (s *ServiceTestSuite) SetupSuite() {
@@ -105,16 +103,14 @@ func (s *ServiceTestSuite) SetupSuite() {
 
 	// Setup test database connection
 	s.setupTestDatabase()
+}
 
-	// Create MockCrossFunction with a fixed time for predictable testing
+func (s *ServiceTestSuite) setupServiceAndCrossFunction() (lock.Locker, *MockCrossFunction, time.Time) {
 	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	s.mockCF = NewMockCrossFunction(baseTime)
-
-	// Create the service with mock CrossFunction
-	service, err := NewHelixLockMySQLService(s.mockCF, s.config)
-	s.Require().NoError(err, "Failed to create MySQL lock service")
-
-	s.service = service
+	mockCF := NewMockCrossFunction(baseTime)
+	ser, err := NewHelixLockMySQLService(mockCF, s.config)
+	s.Require().NoError(err, "Failed to create service")
+	return ser, mockCF, baseTime
 }
 
 func (s *ServiceTestSuite) setupTestDatabase() {
@@ -251,6 +247,7 @@ func (s *ServiceTestSuite) TestAcquire_NewLock_Success() {
 	lockKey := "automation-lock-key-" + uuid.NewString()
 	ownerID := "automation-owner-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	request := &lock.AcquireRequest{
 		LockKey: lockKey,
@@ -258,7 +255,7 @@ func (s *ServiceTestSuite) TestAcquire_NewLock_Success() {
 		TTL:     ttl,
 	}
 
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 	s.Assert().NoError(err)
 	s.Assert().True(response.Acquired, "Lock should be acquired")
 	s.Assert().Equal(ownerID, response.OwnerID, "Owner ID should match")
@@ -272,7 +269,7 @@ func (s *ServiceTestSuite) TestAcquire_NewLock_Success() {
 	s.Assert().Equal("active", dbRecord.Status, "Lock status should be active")
 
 	// Verify expiration time is approximately correct
-	expectedExpiration := s.mockCF.Now().Add(ttl)
+	expectedExpiration := cf.Now().Add(ttl)
 	timeDiff := dbRecord.ExpiresAt.Sub(expectedExpiration)
 	s.Assert().True(timeDiff >= -time.Second && timeDiff <= time.Second,
 		"Expiration time should be approximately correct")
@@ -283,6 +280,7 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_NotExpired_Success() {
 	lockKey := "automation-lock-key-" + uuid.NewString()
 	ownerID := "automation-owner-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, _, _ := s.setupServiceAndCrossFunction()
 
 	request := &lock.AcquireRequest{
 		LockKey: lockKey,
@@ -291,14 +289,14 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_NotExpired_Success() {
 	}
 
 	// First acquisition
-	response1, err := s.service.Acquire(ctx, request)
+	response1, err := lockService.Acquire(ctx, request)
 	s.Assert().NoError(err)
 	s.Assert().True(response1.Acquired, "Lock should be acquired")
 	s.Assert().Equal(ownerID, response1.OwnerID, "Owner ID should match")
 	s.Assert().Equal(int64(1), response1.Epoch, "New lock should start with epoch 1")
 
 	// Same owner tries to acquire again - should succeed WITHOUT incremented epoch (not expired yet)
-	response2, err := s.service.Acquire(ctx, request)
+	response2, err := lockService.Acquire(ctx, request)
 	s.Assert().NoError(err)
 	s.Assert().True(response2.Acquired, "Lock should be acquired")
 	s.Assert().Equal(ownerID, response2.OwnerID, "Owner ID should match")
@@ -317,6 +315,7 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_Expired_Success() {
 	lockKey := "automation-lock-key-" + uuid.NewString()
 	ownerID := "automation-owner-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	request := &lock.AcquireRequest{
 		LockKey: lockKey,
@@ -325,18 +324,18 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_Expired_Success() {
 	}
 
 	// First acquisition
-	response1, err := s.service.Acquire(ctx, request)
+	response1, err := lockService.Acquire(ctx, request)
 	s.Assert().NoError(err)
 	s.Assert().True(response1.Acquired, "Lock should be acquired")
 	s.Assert().Equal(ownerID, response1.OwnerID, "Owner ID should match")
 	s.Assert().Equal(int64(1), response1.Epoch, "New lock should start with epoch 1")
 
 	// Same owner tries to acquire again - should succeed with incremented epoch
-	now := s.mockCF.Now()
-	s.mockCF.SetTime(now.Add(20 * time.Minute))
-	defer s.mockCF.SetTime(now)
+	now := cf.Now()
+	cf.SetTime(now.Add(20 * time.Minute))
+	defer cf.SetTime(now)
 
-	response2, err := s.service.Acquire(ctx, request)
+	response2, err := lockService.Acquire(ctx, request)
 	s.Assert().NoError(err)
 	s.Assert().True(response2.Acquired, "Lock should be acquired")
 	s.Assert().Equal(ownerID, response2.OwnerID, "Owner ID should match")
@@ -356,6 +355,7 @@ func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 	owner1 := "automation-owner-1-" + uuid.NewString()
 	owner2 := "automation-owner-2-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, _, _ := s.setupServiceAndCrossFunction()
 
 	// Owner1 acquires lock
 	request1 := &lock.AcquireRequest{
@@ -363,7 +363,7 @@ func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 		OwnerID: owner1,
 		TTL:     ttl,
 	}
-	response1, err := s.service.Acquire(ctx, request1)
+	response1, err := lockService.Acquire(ctx, request1)
 	s.Assert().NoError(err)
 	s.Assert().True(response1.Acquired, "Lock should be acquired")
 	s.Assert().Equal(owner1, response1.OwnerID, "Owner ID should match")
@@ -375,7 +375,7 @@ func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 		OwnerID: owner2,
 		TTL:     ttl,
 	}
-	response2, err := s.service.Acquire(ctx, request2)
+	response2, err := lockService.Acquire(ctx, request2)
 	s.Assert().NoError(err)
 	s.Assert().False(response2.Acquired, "Second lock should NOT be acquired")
 	s.Assert().Equal(owner1, response2.OwnerID, "Response should contain requesting owner ID")
@@ -398,6 +398,7 @@ func (s *ServiceTestSuite) TestAcquire_ShorterTTL_EdgeCase() {
 	lockKey := "automation-lock-key-" + uuid.NewString()
 	owner1 := "automation-owner-1-" + uuid.NewString()
 	owner2 := "automation-owner-2-" + uuid.NewString()
+	lockService, _, _ := s.setupServiceAndCrossFunction()
 
 	// Owner1 acquires lock with 10 minute TTL
 	request1 := &lock.AcquireRequest{
@@ -405,7 +406,7 @@ func (s *ServiceTestSuite) TestAcquire_ShorterTTL_EdgeCase() {
 		OwnerID: owner1,
 		TTL:     10 * time.Minute,
 	}
-	response1, err := s.service.Acquire(ctx, request1)
+	response1, err := lockService.Acquire(ctx, request1)
 	s.Require().NoError(err, "First acquisition should succeed")
 	s.Assert().True(response1.Acquired, "First lock should be acquired")
 
@@ -421,7 +422,7 @@ func (s *ServiceTestSuite) TestAcquire_ShorterTTL_EdgeCase() {
 		OwnerID: owner2,
 		TTL:     5 * time.Minute,
 	}
-	response2, err := s.service.Acquire(ctx, request2)
+	response2, err := lockService.Acquire(ctx, request2)
 	s.Require().NoError(err, "Second acquisition should not error")
 	s.Assert().False(response2.Acquired, "Should not acquire lock with shorter TTL")
 
@@ -435,12 +436,13 @@ func (s *ServiceTestSuite) TestAcquire_ShorterTTL_EdgeCase() {
 
 func (s *ServiceTestSuite) TestAcquire_ExpiredLockWithShorterTTL() {
 	ctx := context.Background()
-	lockKey := "test-expired-shorter"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// Insert an expired lock with far future expiration originally
-	pastTime := s.mockCF.Now().Add(-10 * time.Minute) // 10 minutes ago (expired)
+	pastTime := cf.Now().Add(-10 * time.Minute) // 10 minutes ago (expired)
 	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 3, "active")
 
 	// Owner2 tries to acquire with shorter TTL than current time
@@ -450,7 +452,7 @@ func (s *ServiceTestSuite) TestAcquire_ExpiredLockWithShorterTTL() {
 		OwnerID: owner2,
 		TTL:     1 * time.Minute, // Much shorter than the time that has passed
 	}
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 	s.Require().NoError(err, "Acquisition should not error")
 
 	// Since past time < (now + 1 minute), TryUpsertLock should update
@@ -467,14 +469,15 @@ func (s *ServiceTestSuite) TestAcquire_ExpiredLockWithShorterTTL() {
 
 func (s *ServiceTestSuite) TestAcquire_ExactExpirationTime_EdgeCase() {
 	ctx := context.Background()
-	lockKey := "test-exact-time"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 	ttl := 5 * time.Minute
 
 	// Set specific time for predictable behavior
 	currentTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	s.mockCF.SetTime(currentTime)
+	cf.SetTime(currentTime)
 
 	// Insert a lock that expires at exactly currentTime + 5 minutes
 	exactExpirationTime := currentTime.Add(5 * time.Minute)
@@ -488,7 +491,7 @@ func (s *ServiceTestSuite) TestAcquire_ExactExpirationTime_EdgeCase() {
 		OwnerID: owner2,
 		TTL:     ttl,
 	}
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 	s.Require().NoError(err, "Acquisition should not error")
 	s.Assert().False(response.Acquired, "Should not acquire lock with exact same expiration time")
 
@@ -502,12 +505,13 @@ func (s *ServiceTestSuite) TestAcquire_ExactExpirationTime_EdgeCase() {
 
 func (s *ServiceTestSuite) TestAcquire_LongerTTL_ExpiredLock_Success() {
 	ctx := context.Background()
-	lockKey := "test-longer-ttl-expired"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// Insert an expired lock
-	pastTime := s.mockCF.Now().Add(-5 * time.Minute) // 5 minutes ago
+	pastTime := cf.Now().Add(-5 * time.Minute) // 5 minutes ago
 	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 7, "active")
 
 	// Owner2 tries to acquire with longer TTL
@@ -517,7 +521,7 @@ func (s *ServiceTestSuite) TestAcquire_LongerTTL_ExpiredLock_Success() {
 		OwnerID: owner2,
 		TTL:     10 * time.Minute,
 	}
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 	s.Require().NoError(err, "Acquisition should not error")
 	s.Assert().True(response.Acquired, "Should acquire expired lock with longer TTL")
 	s.Assert().Equal(owner2, response.OwnerID, "New owner should be in response")
@@ -530,7 +534,7 @@ func (s *ServiceTestSuite) TestAcquire_LongerTTL_ExpiredLock_Success() {
 	s.Assert().Equal(int64(8), dbRecord.Epoch, "Database should show incremented epoch")
 
 	// Verify new expiration time
-	expectedExpiration := s.mockCF.Now().Add(10 * time.Minute)
+	expectedExpiration := cf.Now().Add(10 * time.Minute)
 	timeDiff := dbRecord.ExpiresAt.Sub(expectedExpiration)
 	s.Assert().True(timeDiff >= -time.Second && timeDiff <= time.Second,
 		"New expiration time should be approximately correct")
@@ -538,13 +542,14 @@ func (s *ServiceTestSuite) TestAcquire_LongerTTL_ExpiredLock_Success() {
 
 func (s *ServiceTestSuite) TestAcquire_ClockSkew_MicrosecondPrecision() {
 	ctx := context.Background()
-	lockKey := "test-clock-skew"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// Set precise time with microseconds
 	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 123456, time.UTC)
-	s.mockCF.SetTime(baseTime)
+	cf.SetTime(baseTime)
 
 	// Insert lock that expires 100 microseconds in the future
 	futureTime := baseTime.Add(100 * time.Microsecond)
@@ -557,7 +562,7 @@ func (s *ServiceTestSuite) TestAcquire_ClockSkew_MicrosecondPrecision() {
 		OwnerID: owner2,
 		TTL:     50 * time.Microsecond,
 	}
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 	s.Require().NoError(err, "Acquisition should not error")
 
 	// Since futureTime > baseTime + 50 microseconds, no update should occur
@@ -576,13 +581,14 @@ func (s *ServiceTestSuite) TestAcquire_ClockSkew_MicrosecondPrecision() {
 
 func (s *ServiceTestSuite) TestAcquire_BugRaceConditionLogic() {
 	ctx := context.Background()
-	lockKey := "test-race-condition-bug"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// This test exposes the bug in lines 57-62 of service.go
 	// Insert an expired lock that should be acquirable
-	pastTime := s.mockCF.Now().Add(-10 * time.Minute)
+	pastTime := cf.Now().Add(-10 * time.Minute)
 	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 3, "active")
 
 	request := &lock.AcquireRequest{
@@ -591,7 +597,7 @@ func (s *ServiceTestSuite) TestAcquire_BugRaceConditionLogic() {
 		TTL:     5 * time.Minute,
 	}
 
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 
 	// Get actual DB state after upsert attempt
 	dbRecord, err2 := s.getLockFromDB(lockKey)
@@ -623,7 +629,7 @@ func (s *ServiceTestSuite) TestAcquire_BugRaceConditionLogic() {
 		if dbRecord.OwnerID == owner1 {
 			s.T().Logf("Confirmed: TryUpsertLock condition failed, no update occurred")
 			s.T().Logf("Expired lock at %v was not acquired with new expiration %v",
-				pastTime, s.mockCF.Now().Add(5*time.Minute))
+				pastTime, cf.Now().Add(5*time.Minute))
 		}
 		return // Test documented the bug, don't continue with assertions
 	}
@@ -644,14 +650,15 @@ func (s *ServiceTestSuite) TestAcquire_BugRaceConditionLogic() {
 		s.Assert().False(response.Acquired, "Response should indicate failed acquisition when DB unchanged")
 		// This case reveals when the TryUpsertLock condition fails
 		s.T().Logf("TryUpsertLock condition failed - expires_at (%v) not < VALUES(expires_at) (%v)",
-			pastTime, s.mockCF.Now().Add(5*time.Minute))
+			pastTime, cf.Now().Add(5*time.Minute))
 	}
 }
 
 func (s *ServiceTestSuite) TestAcquire_BugStatusFieldHandling() {
 	ctx := context.Background()
-	lockKey := "test-status-field-bug"
-	ownerID := "owner-1"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	ownerID := "automation-owner-1-" + uuid.NewString()
+	lockService, _, _ := s.setupServiceAndCrossFunction()
 
 	// Test that status field is properly handled in TryUpsertLock
 	// The TryUpsertLock query doesn't explicitly set status='active' for new records
@@ -662,7 +669,7 @@ func (s *ServiceTestSuite) TestAcquire_BugStatusFieldHandling() {
 		TTL:     5 * time.Minute,
 	}
 
-	response, err := s.service.Acquire(ctx, request)
+	response, err := lockService.Acquire(ctx, request)
 	s.Require().NoError(err, "New lock acquisition should not error")
 
 	if response.Acquired {
@@ -687,13 +694,14 @@ func (s *ServiceTestSuite) TestAcquire_BugStatusFieldHandling() {
 
 func (s *ServiceTestSuite) TestAcquire_ConcurrentExpiredLockAcquisition() {
 	ctx := context.Background()
-	lockKey := "test-concurrent-expired"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// Insert an expired lock
-	expiredTime := s.mockCF.Now().Add(-10 * time.Minute)
+	expiredTime := cf.Now().Add(-10 * time.Minute)
 	s.insertTestLockWithEpoch(lockKey, "expired-owner", expiredTime, 3, "active")
 
 	// Two owners try to acquire the expired lock concurrently
@@ -705,20 +713,22 @@ func (s *ServiceTestSuite) TestAcquire_ConcurrentExpiredLockAcquisition() {
 
 	go func() {
 		defer close(done1)
-		response1, err1 = s.service.Acquire(ctx, &lock.AcquireRequest{
+		response1, err1 = lockService.Acquire(ctx, &lock.AcquireRequest{
 			LockKey: lockKey,
 			OwnerID: owner1,
 			TTL:     ttl,
 		})
+		fmt.Println(response1, err1)
 	}()
 
 	go func() {
 		defer close(done2)
-		response2, err2 = s.service.Acquire(ctx, &lock.AcquireRequest{
+		response2, err2 = lockService.Acquire(ctx, &lock.AcquireRequest{
 			LockKey: lockKey,
 			OwnerID: owner2,
 			TTL:     ttl,
 		})
+		fmt.Println(response2, err2)
 	}()
 
 	<-done1
@@ -755,10 +765,11 @@ func (s *ServiceTestSuite) TestAcquire_ConcurrentExpiredLockAcquisition() {
 
 func (s *ServiceTestSuite) TestAcquire_ConcurrentNewLockCreation() {
 	ctx := context.Background()
-	lockKey := "test-concurrent-new"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, _, _ := s.setupServiceAndCrossFunction()
 
 	// Start with no existing lock
 	s.Assert().Equal(0, s.countActiveLocksForKey(lockKey), "Should start with no locks")
@@ -772,7 +783,7 @@ func (s *ServiceTestSuite) TestAcquire_ConcurrentNewLockCreation() {
 	// Both try to create the same lock simultaneously
 	go func() {
 		defer close(done1)
-		response1, err1 = s.service.Acquire(ctx, &lock.AcquireRequest{
+		response1, err1 = lockService.Acquire(ctx, &lock.AcquireRequest{
 			LockKey: lockKey,
 			OwnerID: owner1,
 			TTL:     ttl,
@@ -781,7 +792,7 @@ func (s *ServiceTestSuite) TestAcquire_ConcurrentNewLockCreation() {
 
 	go func() {
 		defer close(done2)
-		response2, err2 = s.service.Acquire(ctx, &lock.AcquireRequest{
+		response2, err2 = lockService.Acquire(ctx, &lock.AcquireRequest{
 			LockKey: lockKey,
 			OwnerID: owner2,
 			TTL:     ttl,
@@ -821,9 +832,10 @@ func (s *ServiceTestSuite) TestAcquire_ConcurrentNewLockCreation() {
 
 func (s *ServiceTestSuite) TestAcquire_RapidRenewalSequence() {
 	ctx := context.Background()
-	lockKey := "test-rapid-renewal"
-	ownerID := "owner-1"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	ownerID := "automation-owner-1-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, _, _ := s.setupServiceAndCrossFunction()
 
 	request := &lock.AcquireRequest{
 		LockKey: lockKey,
@@ -834,7 +846,7 @@ func (s *ServiceTestSuite) TestAcquire_RapidRenewalSequence() {
 	// Perform rapid sequence of renewals
 	expectedEpoch := int64(1)
 	for i := 0; i < 10; i++ {
-		response, err := s.service.Acquire(ctx, request)
+		response, err := lockService.Acquire(ctx, request)
 		s.Require().NoError(err, "Renewal %d should not error", i+1)
 		s.Assert().True(response.Acquired, "Renewal %d should succeed", i+1)
 		s.Assert().Equal(expectedEpoch, response.Epoch, "Renewal %d should have correct epoch", i+1)
@@ -854,10 +866,11 @@ func (s *ServiceTestSuite) TestAcquire_TimeAdvancementEdgeCases() {
 	lockKey := "test-time-advancement"
 	owner1 := "owner-1"
 	owner2 := "owner-2"
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// Set initial time
 	initialTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	s.mockCF.SetTime(initialTime)
+	cf.SetTime(initialTime)
 
 	// Owner1 acquires lock with 10 minute TTL
 	request1 := &lock.AcquireRequest{
@@ -865,26 +878,26 @@ func (s *ServiceTestSuite) TestAcquire_TimeAdvancementEdgeCases() {
 		OwnerID: owner1,
 		TTL:     10 * time.Minute,
 	}
-	response1, err := s.service.Acquire(ctx, request1)
+	response1, err := lockService.Acquire(ctx, request1)
 	s.Require().NoError(err, "Initial acquisition should succeed")
 	s.Assert().True(response1.Acquired, "Initial lock should be acquired")
 
 	// Advance time by 5 minutes - lock should still be active
-	s.mockCF.AdvanceTime(5 * time.Minute)
+	cf.AdvanceTime(5 * time.Minute)
 
 	request2 := &lock.AcquireRequest{
 		LockKey: lockKey,
 		OwnerID: owner2,
 		TTL:     15 * time.Minute, // Longer TTL than remaining time
 	}
-	response2, err := s.service.Acquire(ctx, request2)
+	response2, err := lockService.Acquire(ctx, request2)
 	s.Require().NoError(err, "Second acquisition should not error")
 	s.Assert().False(response2.Acquired, "Should not acquire active lock")
 
 	// Advance time by another 6 minutes - now lock should be expired
-	s.mockCF.AdvanceTime(6 * time.Minute)
+	cf.AdvanceTime(6 * time.Minute)
 
-	response3, err := s.service.Acquire(ctx, request2)
+	response3, err := lockService.Acquire(ctx, request2)
 	s.Require().NoError(err, "Third acquisition should not error")
 	s.Assert().True(response3.Acquired, "Should acquire expired lock")
 	s.Assert().Equal(owner2, response3.OwnerID, "New owner should be in response")
@@ -895,7 +908,7 @@ func (s *ServiceTestSuite) TestAcquire_TimeAdvancementEdgeCases() {
 	s.Assert().Equal(owner2, dbRecord.OwnerID, "Database should show new owner")
 
 	// Verify new expiration time is correct
-	expectedExpiration := s.mockCF.Now().Add(15 * time.Minute)
+	expectedExpiration := cf.Now().Add(15 * time.Minute)
 	timeDiff := dbRecord.ExpiresAt.Sub(expectedExpiration)
 	s.Assert().True(timeDiff >= -time.Second && timeDiff <= time.Second,
 		"New expiration should be approximately correct")
@@ -903,11 +916,12 @@ func (s *ServiceTestSuite) TestAcquire_TimeAdvancementEdgeCases() {
 
 func (s *ServiceTestSuite) TestAcquire_DatabaseConsistencyUnderLoad() {
 	ctx := context.Background()
-	lockKey := "test-consistency-load"
+	lockKey := "automation-lock-key-" + uuid.NewString()
 	ttl := 5 * time.Minute
+	lockService, cf, _ := s.setupServiceAndCrossFunction()
 
 	// Insert an expired lock
-	expiredTime := s.mockCF.Now().Add(-2 * time.Minute)
+	expiredTime := cf.Now().Add(-2 * time.Minute)
 	s.insertTestLockWithEpoch(lockKey, "original-owner", expiredTime, 1, "active")
 
 	// Create multiple goroutines trying to acquire the same expired lock
@@ -920,7 +934,7 @@ func (s *ServiceTestSuite) TestAcquire_DatabaseConsistencyUnderLoad() {
 		go func(workerID int) {
 			defer func() { done <- workerID }()
 			ownerID := fmt.Sprintf("owner-%d", workerID)
-			responses[workerID], errors[workerID] = s.service.Acquire(ctx, &lock.AcquireRequest{
+			responses[workerID], errors[workerID] = lockService.Acquire(ctx, &lock.AcquireRequest{
 				LockKey: lockKey,
 				OwnerID: ownerID,
 				TTL:     ttl,

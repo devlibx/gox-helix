@@ -40,16 +40,18 @@ const tryUpsertLock = `-- name: TryUpsertLock :exec
 INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
 VALUES (?, ?, ?, 1, 'active')
 ON DUPLICATE KEY
-    UPDATE expires_at = (@orig_expires := expires_at),  -- Capture original value
-           expires_at = IF(@orig_expires < VALUES(expires_at), VALUES(expires_at), @orig_expires),
-           owner_id   = IF(@orig_expires < VALUES(expires_at), VALUES(owner_id), owner_id),
-           epoch      = IF(@orig_expires < VALUES(expires_at), epoch + 1, epoch)
+    UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(owner_id), owner_id),
+           expires_at = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(expires_at), expires_at),
+           epoch      = IF(owner_id = VALUES(owner_id) OR expires_at < ?, epoch + 1, epoch)
 `
 
 type TryUpsertLockParams struct {
-	LockKey   string    `json:"lock_key"`
-	OwnerID   string    `json:"owner_id"`
-	ExpiresAt time.Time `json:"expires_at"`
+	LockKey     string    `json:"lock_key"`
+	OwnerID     string    `json:"owner_id"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	ExpiresAt_2 time.Time `json:"expires_at_2"`
+	ExpiresAt_3 time.Time `json:"expires_at_3"`
+	ExpiresAt_4 time.Time `json:"expires_at_4"`
 }
 
 // TryUpsertLock
@@ -57,11 +59,17 @@ type TryUpsertLockParams struct {
 //	INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
 //	VALUES (?, ?, ?, 1, 'active')
 //	ON DUPLICATE KEY
-//	    UPDATE expires_at = (@orig_expires := expires_at),  -- Capture original value
-//	           expires_at = IF(@orig_expires < VALUES(expires_at), VALUES(expires_at), @orig_expires),
-//	           owner_id   = IF(@orig_expires < VALUES(expires_at), VALUES(owner_id), owner_id),
-//	           epoch      = IF(@orig_expires < VALUES(expires_at), epoch + 1, epoch)
+//	    UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(owner_id), owner_id),
+//	           expires_at = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(expires_at), expires_at),
+//	           epoch      = IF(owner_id = VALUES(owner_id) OR expires_at < ?, epoch + 1, epoch)
 func (q *Queries) TryUpsertLock(ctx context.Context, arg TryUpsertLockParams) error {
-	_, err := q.exec(ctx, q.tryUpsertLockStmt, tryUpsertLock, arg.LockKey, arg.OwnerID, arg.ExpiresAt)
+	_, err := q.exec(ctx, q.tryUpsertLockStmt, tryUpsertLock,
+		arg.LockKey,
+		arg.OwnerID,
+		arg.ExpiresAt,
+		arg.ExpiresAt_2,
+		arg.ExpiresAt_3,
+		arg.ExpiresAt_4,
+	)
 	return err
 }
