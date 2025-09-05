@@ -10,6 +10,7 @@ import (
 
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/common/lock"
+	helixMysql "github.com/devlibx/gox-helix/pkg/common/lock/mysql/database"
 	"github.com/devlibx/gox-helix/pkg/util"
 	"github.com/stretchr/testify/suite"
 	"os"
@@ -157,11 +158,11 @@ func (s *ServiceTestSuite) cleanupLocks() {
 	s.Require().NoError(err, "Failed to cleanup helix_locks table")
 }
 
-func (s *ServiceTestSuite) insertTestLock(lockKey, ownerID string, expiresAt time.Time, status string) {
+func (s *ServiceTestSuite) insertTestLock(lockKey, ownerID string, expiresAt time.Time, status int8) {
 	s.insertTestLockWithEpoch(lockKey, ownerID, expiresAt, 1, status)
 }
 
-func (s *ServiceTestSuite) insertTestLockWithEpoch(lockKey, ownerID string, expiresAt time.Time, epoch int64, status string) {
+func (s *ServiceTestSuite) insertTestLockWithEpoch(lockKey, ownerID string, expiresAt time.Time, epoch int64, status int8) {
 	_, err := s.db.Exec(
 		"INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())",
 		lockKey, ownerID, expiresAt, epoch, status,
@@ -171,7 +172,7 @@ func (s *ServiceTestSuite) insertTestLockWithEpoch(lockKey, ownerID string, expi
 
 func (s *ServiceTestSuite) getLockFromDB(lockKey string) (*lock.DBLockRecord, error) {
 	row := s.db.QueryRow(
-		"SELECT lock_key, owner_id, expires_at, epoch, status, created_at, updated_at FROM helix_locks WHERE lock_key = ? AND status = 'active'",
+		"SELECT lock_key, owner_id, expires_at, epoch, status, created_at, updated_at FROM helix_locks WHERE lock_key = ? AND status = 1",
 		lockKey,
 	)
 
@@ -184,7 +185,7 @@ func (s *ServiceTestSuite) getLockFromDB(lockKey string) (*lock.DBLockRecord, er
 }
 
 func (s *ServiceTestSuite) countActiveLocksForKey(lockKey string) int {
-	row := s.db.QueryRow("SELECT COUNT(*) FROM helix_locks WHERE lock_key = ? AND status = 'active'", lockKey)
+	row := s.db.QueryRow("SELECT COUNT(*) FROM helix_locks WHERE lock_key = ? AND status = 1", lockKey)
 	var count int
 	err := row.Scan(&count)
 	s.Require().NoError(err, "Failed to count active locks")
@@ -266,7 +267,7 @@ func (s *ServiceTestSuite) TestAcquire_NewLock_Success() {
 	s.Require().NoError(err, "Should be able to retrieve lock from database")
 	s.Assert().Equal(ownerID, dbRecord.OwnerID, "Database should show correct owner")
 	s.Assert().Equal(int64(1), dbRecord.Epoch, "Database should show epoch 1")
-	s.Assert().Equal("active", dbRecord.Status, "Lock status should be active")
+	s.Assert().Equal(helixMysql.LockStatusActive, dbRecord.Status, "Lock status should be active")
 
 	// Verify expiration time is approximately correct
 	expectedExpiration := cf.Now().Add(ttl)
@@ -443,7 +444,7 @@ func (s *ServiceTestSuite) TestAcquire_ExpiredLockWithShorterTTL() {
 
 	// Insert an expired lock with far future expiration originally
 	pastTime := cf.Now().Add(-10 * time.Minute) // 10 minutes ago (expired)
-	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 3, "active")
+	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 3, helixMysql.LockStatusActive)
 
 	// Owner2 tries to acquire with shorter TTL than current time
 	// This tests the edge case where current expires_at < new expires_at but lock is expired
@@ -481,7 +482,7 @@ func (s *ServiceTestSuite) TestAcquire_ExactExpirationTime_EdgeCase() {
 
 	// Insert a lock that expires at exactly currentTime + 5 minutes
 	exactExpirationTime := currentTime.Add(5 * time.Minute)
-	s.insertTestLockWithEpoch(lockKey, owner1, exactExpirationTime, 2, "active")
+	s.insertTestLockWithEpoch(lockKey, owner1, exactExpirationTime, 2, helixMysql.LockStatusActive)
 
 	// Owner2 tries to acquire with same TTL (5 minutes)
 	// New expiration would be currentTime + 5 minutes = exactExpirationTime
@@ -512,7 +513,7 @@ func (s *ServiceTestSuite) TestAcquire_LongerTTL_ExpiredLock_Success() {
 
 	// Insert an expired lock
 	pastTime := cf.Now().Add(-5 * time.Minute) // 5 minutes ago
-	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 7, "active")
+	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 7, helixMysql.LockStatusActive)
 
 	// Owner2 tries to acquire with longer TTL
 	// Past time < (now + 10 minutes), so TryUpsertLock should succeed
@@ -554,7 +555,7 @@ func (s *ServiceTestSuite) TestAcquire_BugRaceConditionLogic() {
 	// This test exposes the bug in lines 57-62 of service.go
 	// Insert an expired lock that should be acquirable
 	pastTime := cf.Now().Add(-10 * time.Minute)
-	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 3, "active")
+	s.insertTestLockWithEpoch(lockKey, owner1, pastTime, 3, helixMysql.LockStatusActive)
 
 	request := &lock.AcquireRequest{
 		LockKey: lockKey,
@@ -641,7 +642,7 @@ func (s *ServiceTestSuite) TestAcquire_BugStatusFieldHandling() {
 		// Verify the status field is correct in database
 		dbRecord, err := s.getLockFromDB(lockKey)
 		s.Require().NoError(err, "Should be able to retrieve lock from database")
-		s.Assert().Equal("active", dbRecord.Status, "Lock status should be 'active'")
+		s.Assert().Equal(helixMysql.LockStatusActive, dbRecord.Status, "Lock status should be 'active'")
 		s.Assert().Equal(ownerID, dbRecord.OwnerID, "Owner should be correct")
 		s.Assert().Equal(int64(1), dbRecord.Epoch, "Epoch should be 1 for new lock")
 	} else {
@@ -667,7 +668,7 @@ func (s *ServiceTestSuite) TestAcquire_ConcurrentExpiredLockAcquisition() {
 
 	// Insert an expired lock
 	expiredTime := cf.Now().Add(-10 * time.Minute)
-	s.insertTestLockWithEpoch(lockKey, "expired-owner", expiredTime, 3, "active")
+	s.insertTestLockWithEpoch(lockKey, "expired-owner", expiredTime, 3, helixMysql.LockStatusActive)
 
 	// Two owners try to acquire the expired lock concurrently
 	var response1, response2 *lock.AcquireResponse
@@ -887,7 +888,7 @@ func (s *ServiceTestSuite) TestAcquire_DatabaseConsistencyUnderLoad() {
 
 	// Insert an expired lock
 	expiredTime := cf.Now().Add(-2 * time.Minute)
-	s.insertTestLockWithEpoch(lockKey, "original-owner", expiredTime, 1, "active")
+	s.insertTestLockWithEpoch(lockKey, "original-owner", expiredTime, 1, helixMysql.LockStatusActive)
 
 	// Create multiple goroutines trying to acquire the same expired lock
 	numWorkers := 5

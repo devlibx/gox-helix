@@ -39,7 +39,7 @@ type DBLockRecord struct {
 	OwnerID   string    `json:"owner_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 	Epoch     int64     `json:"epoch"`
-	Status    string    `json:"status"`
+	Status    int8      `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
