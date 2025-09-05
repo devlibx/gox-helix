@@ -17,58 +17,73 @@ This document outlines the design for coordinator election, ensuring a single ac
 
 ## 3. Proposed Approach
 
-We will use a distributed lock implemented in MySQL to manage coordinator election. A dedicated `locks` table will be used for this purpose.
+We will use a distributed lock implemented in MySQL to manage coordinator election. A dedicated `helix_locks` table will be used for this purpose.
 
 ### 3.1. Database Schema for Locking
 
-We will create a `locks` table with the following schema:
+We will use the `helix_locks` table with the following schema:
 
 ```sql
-CREATE TABLE locks (
-    lock_key VARCHAR(255) PRIMARY KEY,
-    owner_id VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP NOT NULL
+CREATE TABLE helix_locks (
+    id           bigint unsigned NOT NULL AUTO_INCREMENT,
+    lock_key     VARCHAR(255)    NOT NULL,
+    owner_id     VARCHAR(255)    NOT NULL,
+    expires_at   TIMESTAMP       NOT NULL,
+    epoch        bigint          NOT NULL DEFAULT 0,
+    status       TINYINT         NOT NULL DEFAULT 1, -- 1: active, 0: inactive, 2: deletable
+    created_at   datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `lock_key_status_unique_key` (`lock_key`, `status`),
+    KEY `lock_key_ids` (`lock_key`)
 );
 ```
 
-*   `lock_key`: A unique name for the lock. For our purpose, this will be a constant value like `coordinator_lock`.
-*   `owner_id`: The unique identifier of the worker node that currently holds the lock (i.e., the coordinator).
+*   `lock_key`: A unique name for the lock (e.g., `coordinator_lock`).
+*   `owner_id`: The unique identifier of the worker node that currently holds the lock.
 *   `expires_at`: A timestamp indicating when the lock will expire if not renewed.
+*   `epoch`: A version token for optimistic locking, incremented on successful acquisition or renewal by a new owner. This helps prevent split-brain scenarios.
+*   `status`: A `TINYINT` representing the lock's state (1 for active, 0 for inactive, 2 for deletable).
 
 ### 3.2. Leader Election Workflow
 
 1.  A worker node starts up and attempts to become the coordinator.
-2.  It tries to insert a row into the `locks` table with `lock_key = 'coordinator_lock'`, its own unique `owner_id`, and an `expires_at` timestamp set to `NOW() + lock_timeout` (e.g., 10 seconds).
-3.  If the `INSERT` is successful, the node becomes the coordinator.
-4.  If the `INSERT` fails due to a primary key violation, it means another node is already the coordinator.
+2.  It attempts to acquire the lock using an atomic `INSERT ... ON DUPLICATE KEY UPDATE` operation. This operation tries to insert a new lock record or update an existing one if it's expired or owned by the same node.
+
+    ```sql
+    INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
+    VALUES ('coordinator_lock', <new_worker_id>, NOW() + <lock_timeout_seconds>, 1, 1)
+    ON DUPLICATE KEY
+        UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < VALUES(expires_at), VALUES(owner_id), owner_id),
+               expires_at = IF(owner_id = VALUES(owner_id) OR expires_at < VALUES(expires_at), VALUES(expires_at), expires_at),
+               epoch      = IF(owner_id = VALUES(owner_id) OR expires_at < VALUES(expires_at), epoch + 1, epoch);
+    ```
+    *   The `epoch` is initialized to 1 for a new lock and incremented on successful acquisition/renewal.
+    *   The `status` is set to 1 (active).
+
+3.  After executing this query, the node reads the `helix_locks` table to confirm if its `owner_id` is now the current owner and if the `epoch` has been incremented (if it was an update). If confirmed, it becomes the coordinator.
 
 ### 3.3. Maintaining Leadership (Heartbeating)
 
-The active coordinator is responsible for renewing its lock before it expires.
+The active coordinator is responsible for renewing its lock before it expires. This is done by re-executing the `TryUpsertLock` operation with its own `owner_id` and an updated `expires_at`.
 
-1.  The coordinator will periodically (e.g., every 5 seconds, which is half of the `lock_timeout`) execute an `UPDATE` statement to extend the `expires_at` timestamp.
+1.  The coordinator will periodically (e.g., every 5 seconds, which is half of the `lock_timeout`) execute the `TryUpsertLock` query.
 
     ```sql
-    UPDATE locks
-    SET expires_at = NOW() + 10
-    WHERE lock_key = 'coordinator_lock' AND owner_id = <current_coordinator_id>;
+    INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
+    VALUES ('coordinator_lock', <current_coordinator_id>, NOW() + <lock_timeout_seconds>, 1, 1)
+    ON DUPLICATE KEY
+        UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < VALUES(expires_at), VALUES(owner_id), owner_id),
+               expires_at = IF(owner_id = VALUES(owner_id) OR expires_at < VALUES(expires_at), VALUES(expires_at), expires_at),
+               epoch      = IF(owner_id = VALUES(owner_id) OR expires_at < VALUES(expires_at), epoch + 1, epoch);
     ```
-
-2.  If this update affects one row, the coordinator continues to be the leader. If it affects zero rows (which could happen in a race condition where another node took over), it must step down.
+2.  If the operation succeeds and the `owner_id` remains its own, and the `epoch` is incremented (for renewals), the coordinator continues to be the leader. If the `owner_id` changes or the `epoch` is not incremented as expected (indicating another node took over), it must step down.
 
 ### 3.4. Failover Mechanism
 
 Non-coordinator nodes will periodically check for a stale lock.
 
-1.  Every 10 seconds, a non-coordinator node will query the `locks` table.
-2.  If no `coordinator_lock` row exists, or if the `expires_at` timestamp is in the past, the node will attempt to acquire the lock.
-3.  To prevent race conditions, a node can use an `INSERT ... ON DUPLICATE KEY UPDATE` statement to try and claim the lock:
-
-    ```sql
-    INSERT INTO locks (lock_key, owner_id, expires_at)
-    VALUES ('coordinator_lock', <new_worker_id>, NOW() + 10)
-    ON DUPLICATE KEY UPDATE
-        owner_id = IF(expires_at < NOW(), VALUES(owner_id), owner_id),
-        expires_at = IF(expires_at < NOW(), VALUES(expires_at), expires_at);
-    ```
-4.  After executing this query, the node must read the `locks` table again to confirm that its `owner_id` is now the current owner of the lock. If it is, it becomes the new coordinator.
+1.  Every 10 seconds, a non-coordinator node will query the `helix_locks` table to check the `expires_at` and `status` of the `coordinator_lock`.
+2.  If the lock is expired (`expires_at` is in the past) or if no active `coordinator_lock` row exists, the node will attempt to acquire the lock using the `TryUpsertLock` operation described in Section 3.2.
+3.  The atomic nature of `TryUpsertLock` ensures that only one node can successfully acquire the lock at a time, even in a race condition. The `epoch` field further guarantees that only the latest successful acquisition is considered valid.
+4.  After executing the `TryUpsertLock` query, the node must read the `helix_locks` table again to confirm that its `owner_id` is now the current owner and the `epoch` reflects its successful acquisition. If confirmed, it becomes the new coordinator.

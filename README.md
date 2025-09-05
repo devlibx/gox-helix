@@ -17,39 +17,58 @@
 
 ## Design Overview
 
-The high-level design is to create a system that can manage and distribute tasks (partitions) among a set of workers. The system will be composed of the following key concepts:
+The high-level design of `gox-helix` involves a central coordinator and a set of workers, all leveraging MySQL for robust coordination and state management. The system is designed to manage and distribute tasks (partitions) among workers, ensuring scalability, reliability, and fault tolerance.
 
-*   **Domain:** A logical grouping of related tasks and workers.
+Key Concepts:
+
+*   **Domain:** A logical grouping for related tasks and workers.
 *   **Queue (Task List):** A queue of tasks within a domain.
-*   **Partition:** A unit of work that can be assigned to a worker.
+*   **Partition:** The smallest unit of work assignable to a worker.
+*   **Worker:** A stateless process executing tasks, capable of dynamically joining or leaving the cluster.
+*   **Coordinator:** A single, elected node responsible for cluster coordination, including partition allocation, leader election, and failure detection.
 
-### Worker Management and Task Allocation
+The coordinator election and distributed locking mechanism utilize a dedicated `helix_locks` table in MySQL. This table employs a `TINYINT` type for the `status` field (e.g., `1` for active, `0` for inactive, `2` for deletable) and incorporates an `epoch` field for optimistic locking, preventing split-brain scenarios and ensuring consistent state.
 
-*   **Dynamic Worker Registration:** Workers are stateless and can come up and go down at any time. They register themselves with a unique ID (UUID) to participate in the work.
-*   **Partition Allocation:** The framework is responsible for allocating partitions to the available workers. This allocation is dynamic and is re-evaluated periodically (e.g., every 10 seconds).
-*   **Rebalancing:** When new workers join or existing workers leave, the partitions are rebalanced among the active workers to ensure an even distribution of work.
-*   **Heartbeating:** Workers send heartbeats to the system to indicate that they are alive and healthy. This allows the system to detect failed workers and re-assign their partitions.
-*   **Coordinator:** A single node acts as a coordinator to manage the allocation of partitions to workers. This coordinator acquires a lock to ensure that it is the only one performing this task at any given time.
+All detailed design documents are maintained in the `doc/design` directory.
 
-For example, we can have a domain `domain_order` with a task list `food_order` and 50 partitions. Workers can register themselves to get work for this domain and task list. The framework will then distribute the 50 partitions among the active workers.
+## Current Work Status
 
-All design documents will be maintained in the `doc/design` directory.
+We are currently refactoring the distributed locking mechanism into a generic, reusable Go package. This involves:
+
+1.  **New Package Structure:** The lock implementation is now located under `pkg/common/lock`, with MySQL-specific details in `pkg/common/lock/mysql/database`.
+2.  **Schema Updates:** The `locks` table has been renamed to `helix_locks` and a new `status` column (TINYINT: `1` for active, `0` for inactive, `2` for deletable) has been added to manage lock states. An `epoch` column has also been introduced for optimistic locking.
+3.  **SQLC Configuration:** `sqlc.yaml` and `queries.sql` have been updated for the new lock package, and `RETURNING` clauses were removed for MySQL compatibility.
+4.  **Interface Definition:** A `Locker` interface has been defined in `pkg/common/lock/lock.go` to abstract the locking operations.
+5.  **Acquire Method Implementation:** The `Acquire` method for the MySQL locker has been implemented, leveraging a refined `TryUpsertLock` SQL query for robust and atomic lock acquisition, including handling renewals and expired locks.
+6.  **Comprehensive Test Suite:** An extensive suite of unit and integration tests has been developed for the lock package in `pkg/common/lock/mysql/service_test.go`, using a real MySQL database and environment variables for configuration, ensuring high reliability and correctness.
+
+## Next Steps
+
+To continue, we need to:
+
+1.  **Implement Release and Renew:** Implement the `Release` and `Renew` methods of the `Locker` interface in `pkg/common/lock/mysql/service.go`.
+2.  **Integrate Locker:** Integrate the new `Locker` package into the coordinator election logic.
+3.  **Refine Coordinator Logic:** Implement the full coordinator election and failover logic using the new `Locker` interface.
+4.  **Worker Registration and Heartbeating:** Implement the worker registration and heartbeating mechanisms.
+5.  **Partition Allocation:** Develop the logic for dynamic partition allocation and rebalancing.
 
 ## Roadmap
 
-This project is in the early stages of development. Here is a high-level roadmap of what we are planning to do:
+This project is in active development. Here is a high-level roadmap of what we are planning to do:
 
-*   [ ] **Phase 1: Core Framework**
-    *   [ ] Implement the core data model in MySQL.
-    *   [ ] Implement the worker registration and heartbeating mechanism.
-    *   [ ] Implement the coordinator election and partition allocation logic.
-*   [ ] **Phase 2: API and SDK**
-    *   [ ] Design and implement a clean and easy-to-use API for defining domains, queues, and partitions.
-    *   [ ] Provide a Go SDK for building workers.
-*   [ ] **Phase 3: Advanced Features**
-    *   [ ] Implement more advanced partition allocation strategies (e.g., sticky partitions).
-    *   [ ] Add support for task prioritization.
-    *   [ ] Add metrics and monitoring capabilities.
+*   **Phase 1: Core Framework (In Progress)**
+    *   Implement the core distributed locking mechanism.
+    *   Implement coordinator election and failover.
+    *   Implement worker registration and heartbeating.
+    *   Implement basic partition allocation logic.
+*   **Phase 2: API and SDK**
+    *   Design and implement a clean and easy-to-use API for defining domains, queues, and partitions.
+    *   Provide a Go SDK for building workers.
+*   **Phase 3: Advanced Features**
+    *   Implement more advanced partition allocation strategies (e.g., sticky partitions, task prioritization).
+    *   Add comprehensive metrics and monitoring capabilities.
+    *   Explore alternative backend stores (e.g., PostgreSQL, etcd).
+
 
 ## Getting Started
 

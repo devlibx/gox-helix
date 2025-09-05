@@ -33,13 +33,13 @@ The framework uses MySQL as a backend to store the state of the cluster. This in
 *   Domains, queues, and partitions
 *   Registered workers
 *   Partition assignments
-*   Locks for leader election
+*   Distributed locks for leader election and other coordination tasks, primarily using the `helix_locks` table.
 
 Using MySQL as a backend provides a familiar and reliable way to store the state of the cluster.
 
 ### 3.2. Coordinator
 
-The coordinator is a single node that is responsible for managing the cluster. The coordinator is elected using a distributed lock in MySQL.
+The coordinator is a single node that is responsible for managing the cluster. The coordinator is elected using a robust distributed lock mechanism implemented in MySQL, leveraging the `helix_locks` table with a `TINYINT` status field and an `epoch` for optimistic locking.
 
 The responsibilities of the coordinator include:
 
