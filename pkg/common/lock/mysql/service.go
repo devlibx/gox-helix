@@ -21,15 +21,15 @@ func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*l
 	// Calculate expiration time
 	now := s.Now()
 	expiresAt := now.Add(request.TTL)
-	
+
 	// Try to upsert the lock
 	err := s.Querier.TryUpsertLock(ctx, helixMysql.TryUpsertLockParams{
 		LockKey:     request.LockKey,
 		OwnerID:     request.OwnerID,
 		ExpiresAt:   expiresAt,
-		ExpiresAt_2: expiresAt,
-		ExpiresAt_3: expiresAt,
-		ExpiresAt_4: expiresAt,
+		ExpiresAt_2: now,
+		ExpiresAt_3: now,
+		ExpiresAt_4: now,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to acquire lock during upsert: lock_key=%s", request.LockKey)

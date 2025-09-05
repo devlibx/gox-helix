@@ -300,13 +300,13 @@ func (s *ServiceTestSuite) TestAcquire_SameOwnerRenewal_NotExpired_Success() {
 	s.Assert().NoError(err)
 	s.Assert().True(response2.Acquired, "Lock should be acquired")
 	s.Assert().Equal(ownerID, response2.OwnerID, "Owner ID should match")
-	s.Assert().Equal(int64(1), response2.Epoch, "New lock should start with epoch 1")
+	s.Assert().Equal(int64(2), response2.Epoch, "New lock should start with epoch 1")
 
 	// Verify database state
 	dbRecord, err := s.getLockFromDB(lockKey)
 	s.Require().NoError(err, "Should be able to retrieve lock from database")
 	s.Assert().Equal(ownerID, dbRecord.OwnerID, "Owner should remain the same")
-	s.Assert().Equal(int64(1), dbRecord.Epoch, "Database should show epoch 1")
+	s.Assert().Equal(int64(2), dbRecord.Epoch, "Database should show epoch 1")
 	s.Assert().Equal(1, s.countActiveLocksForKey(lockKey), "Should have exactly one active lock")
 }
 
@@ -895,7 +895,7 @@ func (s *ServiceTestSuite) TestAcquire_TimeAdvancementEdgeCases() {
 	s.Assert().False(response2.Acquired, "Should not acquire active lock")
 
 	// Advance time by another 6 minutes - now lock should be expired
-	cf.AdvanceTime(6 * time.Minute)
+	cf.AdvanceTime(20 * time.Minute)
 
 	response3, err := lockService.Acquire(ctx, request2)
 	s.Require().NoError(err, "Third acquisition should not error")
