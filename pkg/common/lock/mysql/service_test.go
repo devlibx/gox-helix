@@ -395,9 +395,9 @@ func (s *ServiceTestSuite) TestAcquire_DifferentOwnerActiveLock_Blocked() {
 
 func (s *ServiceTestSuite) TestAcquire_ShorterTTL_EdgeCase() {
 	ctx := context.Background()
-	lockKey := "test-shorter-ttl"
-	owner1 := "owner-1"
-	owner2 := "owner-2"
+	lockKey := "automation-lock-key-" + uuid.NewString()
+	owner1 := "automation-owner-1-" + uuid.NewString()
+	owner2 := "automation-owner-2-" + uuid.NewString()
 
 	// Owner1 acquires lock with 10 minute TTL
 	request1 := &lock.AcquireRequest{
