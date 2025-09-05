@@ -7,107 +7,59 @@ package helixMysql
 
 import (
 	"context"
-	"database/sql"
 	"time"
 )
 
-const checkLockOwnership = `-- name: CheckLockOwnership :one
-SELECT owner_id, expires_at, status
+const getLockByLockKey = `-- name: GetLockByLockKey :one
+SELECT owner_id, expires_at, epoch
 FROM helix_locks
-WHERE lock_key = ? AND status = 'active'
-ORDER BY updated_at DESC
-LIMIT 1
+WHERE lock_key = ?
+  AND status = 'active'
 `
 
-type CheckLockOwnershipRow struct {
-	OwnerID   string           `json:"owner_id"`
-	ExpiresAt time.Time        `json:"expires_at"`
-	Status    HelixLocksStatus `json:"status"`
+type GetLockByLockKeyRow struct {
+	OwnerID   string    `json:"owner_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Epoch     int64     `json:"epoch"`
 }
 
-// CheckLockOwnership
+// GetLockByLockKey
 //
-//	SELECT owner_id, expires_at, status
+//	SELECT owner_id, expires_at, epoch
 //	FROM helix_locks
-//	WHERE lock_key = ? AND status = 'active'
-//	ORDER BY updated_at DESC
-//	LIMIT 1
-func (q *Queries) CheckLockOwnership(ctx context.Context, lockKey string) (*CheckLockOwnershipRow, error) {
-	row := q.queryRow(ctx, q.checkLockOwnershipStmt, checkLockOwnership, lockKey)
-	var i CheckLockOwnershipRow
-	err := row.Scan(&i.OwnerID, &i.ExpiresAt, &i.Status)
+//	WHERE lock_key = ?
+//	  AND status = 'active'
+func (q *Queries) GetLockByLockKey(ctx context.Context, lockKey string) (*GetLockByLockKeyRow, error) {
+	row := q.queryRow(ctx, q.getLockByLockKeyStmt, getLockByLockKey, lockKey)
+	var i GetLockByLockKeyRow
+	err := row.Scan(&i.OwnerID, &i.ExpiresAt, &i.Epoch)
 	return &i, err
 }
 
-const tryAcquireLock = `-- name: TryAcquireLock :execresult
-INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
-VALUES (?, ?, ?, 'active')
-ON DUPLICATE KEY UPDATE
-    owner_id = CASE 
-        WHEN expires_at <= NOW() THEN VALUES(owner_id)
-        ELSE owner_id
-    END,
-    expires_at = CASE 
-        WHEN expires_at <= NOW() THEN VALUES(expires_at)
-        ELSE expires_at
-    END
+const tryUpsertLock = `-- name: TryUpsertLock :exec
+INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
+VALUES (?, ?, ?, 1, 'active')
+ON DUPLICATE KEY
+    UPDATE owner_id   = CASE WHEN expires_at < VALUES(expires_at) THEN VALUES(owner_id) ELSE owner_id END,
+           expires_at = CASE WHEN expires_at < VALUES(expires_at) THEN VALUES(expires_at) ELSE expires_at END,
+           epoch = CASE WHEN expires_at < VALUES(expires_at) THEN epoch + 1 ELSE epoch END
 `
 
-type TryAcquireLockParams struct {
+type TryUpsertLockParams struct {
 	LockKey   string    `json:"lock_key"`
 	OwnerID   string    `json:"owner_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// TryAcquireLock
+// TryUpsertLock
 //
-//	INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
-//	VALUES (?, ?, ?, 'active')
-//	ON DUPLICATE KEY UPDATE
-//	    owner_id = CASE
-//	        WHEN expires_at <= NOW() THEN VALUES(owner_id)
-//	        ELSE owner_id
-//	    END,
-//	    expires_at = CASE
-//	        WHEN expires_at <= NOW() THEN VALUES(expires_at)
-//	        ELSE expires_at
-//	    END
-func (q *Queries) TryAcquireLock(ctx context.Context, arg TryAcquireLockParams) (sql.Result, error) {
-	return q.exec(ctx, q.tryAcquireLockStmt, tryAcquireLock, arg.LockKey, arg.OwnerID, arg.ExpiresAt)
-}
-
-const upsertLock = `-- name: UpsertLock :exec
-INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
-VALUES (?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE
-    owner_id = VALUES(owner_id),
-    expires_at = VALUES(expires_at),
-    status = VALUES(status),
-    updated_at = CURRENT_TIMESTAMP
-`
-
-type UpsertLockParams struct {
-	LockKey   string           `json:"lock_key"`
-	OwnerID   string           `json:"owner_id"`
-	ExpiresAt time.Time        `json:"expires_at"`
-	Status    HelixLocksStatus `json:"status"`
-}
-
-// UpsertLock
-//
-//	INSERT INTO helix_locks (lock_key, owner_id, expires_at, status)
-//	VALUES (?, ?, ?, ?)
-//	ON DUPLICATE KEY UPDATE
-//	    owner_id = VALUES(owner_id),
-//	    expires_at = VALUES(expires_at),
-//	    status = VALUES(status),
-//	    updated_at = CURRENT_TIMESTAMP
-func (q *Queries) UpsertLock(ctx context.Context, arg UpsertLockParams) error {
-	_, err := q.exec(ctx, q.upsertLockStmt, upsertLock,
-		arg.LockKey,
-		arg.OwnerID,
-		arg.ExpiresAt,
-		arg.Status,
-	)
+//	INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
+//	VALUES (?, ?, ?, 1, 'active')
+//	ON DUPLICATE KEY
+//	    UPDATE owner_id   = CASE WHEN expires_at < VALUES(expires_at) THEN VALUES(owner_id) ELSE owner_id END,
+//	           expires_at = CASE WHEN expires_at < VALUES(expires_at) THEN VALUES(expires_at) ELSE expires_at END,
+//	           epoch = CASE WHEN expires_at < VALUES(expires_at) THEN epoch + 1 ELSE epoch END
+func (q *Queries) TryUpsertLock(ctx context.Context, arg TryUpsertLockParams) error {
+	_, err := q.exec(ctx, q.tryUpsertLockStmt, tryUpsertLock, arg.LockKey, arg.OwnerID, arg.ExpiresAt)
 	return err
 }

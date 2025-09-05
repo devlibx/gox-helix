@@ -24,33 +24,25 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.checkLockOwnershipStmt, err = db.PrepareContext(ctx, checkLockOwnership); err != nil {
-		return nil, fmt.Errorf("error preparing query CheckLockOwnership: %w", err)
+	if q.getLockByLockKeyStmt, err = db.PrepareContext(ctx, getLockByLockKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLockByLockKey: %w", err)
 	}
-	if q.tryAcquireLockStmt, err = db.PrepareContext(ctx, tryAcquireLock); err != nil {
-		return nil, fmt.Errorf("error preparing query TryAcquireLock: %w", err)
-	}
-	if q.upsertLockStmt, err = db.PrepareContext(ctx, upsertLock); err != nil {
-		return nil, fmt.Errorf("error preparing query UpsertLock: %w", err)
+	if q.tryUpsertLockStmt, err = db.PrepareContext(ctx, tryUpsertLock); err != nil {
+		return nil, fmt.Errorf("error preparing query TryUpsertLock: %w", err)
 	}
 	return &q, nil
 }
 
 func (q *Queries) Close() error {
 	var err error
-	if q.checkLockOwnershipStmt != nil {
-		if cerr := q.checkLockOwnershipStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing checkLockOwnershipStmt: %w", cerr)
+	if q.getLockByLockKeyStmt != nil {
+		if cerr := q.getLockByLockKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLockByLockKeyStmt: %w", cerr)
 		}
 	}
-	if q.tryAcquireLockStmt != nil {
-		if cerr := q.tryAcquireLockStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing tryAcquireLockStmt: %w", cerr)
-		}
-	}
-	if q.upsertLockStmt != nil {
-		if cerr := q.upsertLockStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing upsertLockStmt: %w", cerr)
+	if q.tryUpsertLockStmt != nil {
+		if cerr := q.tryUpsertLockStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing tryUpsertLockStmt: %w", cerr)
 		}
 	}
 	return err
@@ -90,19 +82,17 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                     DBTX
-	tx                     *sql.Tx
-	checkLockOwnershipStmt *sql.Stmt
-	tryAcquireLockStmt     *sql.Stmt
-	upsertLockStmt         *sql.Stmt
+	db                   DBTX
+	tx                   *sql.Tx
+	getLockByLockKeyStmt *sql.Stmt
+	tryUpsertLockStmt    *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                     tx,
-		tx:                     tx,
-		checkLockOwnershipStmt: q.checkLockOwnershipStmt,
-		tryAcquireLockStmt:     q.tryAcquireLockStmt,
-		upsertLockStmt:         q.upsertLockStmt,
+		db:                   tx,
+		tx:                   tx,
+		getLockByLockKeyStmt: q.getLockByLockKeyStmt,
+		tryUpsertLockStmt:    q.tryUpsertLockStmt,
 	}
 }

@@ -16,8 +16,14 @@ func LoadDevEnv() error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Find the project root by looking for .env file
-	envPath := filepath.Join(wd, ".env")
+	// Find the project root by searching upward for go.mod
+	projectRoot, err := findProjectRoot(wd)
+	if err != nil {
+		return fmt.Errorf("failed to find project root: %w", err)
+	}
+
+	// Look for .env file in project root
+	envPath := filepath.Join(projectRoot, ".env")
 	
 	// Check if .env file exists
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
@@ -64,4 +70,30 @@ func LoadDevEnv() error {
 	}
 
 	return nil
+}
+
+// findProjectRoot searches upward from the given directory to find the project root
+// by looking for a go.mod file
+func findProjectRoot(startDir string) (string, error) {
+	currentDir := startDir
+	
+	for {
+		// Check if go.mod exists in current directory
+		goModPath := filepath.Join(currentDir, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			return currentDir, nil
+		}
+		
+		// Move to parent directory
+		parentDir := filepath.Dir(currentDir)
+		
+		// If we've reached the root directory, stop searching
+		if parentDir == currentDir {
+			break
+		}
+		
+		currentDir = parentDir
+	}
+	
+	return "", fmt.Errorf("go.mod not found in any parent directory of %s", startDir)
 }

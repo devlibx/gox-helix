@@ -3,6 +3,7 @@ package helixLock
 import (
 	"context"
 	"database/sql"
+	errors2 "errors"
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
@@ -22,32 +23,48 @@ func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*l
 	now := s.Now()
 	expiresAt := now.Add(request.TTL)
 
-	// Try to acquire the lock using upsert with conditional update
-	result, err := s.Queries.TryAcquireLock(ctx, helixMysql.TryAcquireLockParams{
+	// Capture current lock first
+	currentLock, err := s.Queries.GetLockByLockKey(ctx, request.LockKey)
+	if errors2.Is(err, sql.ErrNoRows) {
+		err = nil
+	} else {
+		return nil, errors.Wrap(err, "failed to acquire lock: lock_key=%s", request.LockKey)
+	}
+
+	// Try to upsert the lock
+	err = s.Querier.TryUpsertLock(ctx, helixMysql.TryUpsertLockParams{
 		LockKey:   request.LockKey,
 		OwnerID:   request.OwnerID,
 		ExpiresAt: expiresAt,
 	})
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to try acquire lock: %w", err)
+		return nil, errors.Wrap(err, "failed to acquire lock during upsert: lock_key=%s", request.LockKey)
 	}
 
-	// Check if lock was successfully acquired
-	// For INSERT ... ON DUPLICATE KEY UPDATE:
-	// - RowsAffected = 1 if new row inserted (lock acquired)
-	// - RowsAffected = 2 if existing row updated (lock acquired after expiration)
-	// - RowsAffected = 0 if no change made (lock held by another owner and not expired)
-	rowsAffected, err := result.RowsAffected()
+	// Get the lock post upsert
+	lockAfterUpsert, err := s.Queries.GetLockByLockKey(ctx, request.LockKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get rows affected: %w", err)
+		return nil, errors.Wrap(err, "failed to acquire lock post upsert: lock_key=%s", request.LockKey)
 	}
 
-	acquired := rowsAffected > 0
+	if lockAfterUpsert.OwnerID == request.OwnerID {
+		// Case where existing owner is the owner
+		return &lock.AcquireResponse{
+			OwnerID:  lockAfterUpsert.OwnerID,
+			Acquired: true,
+			Epoch:    lockAfterUpsert.Epoch,
+		}, nil
+	} else if currentLock != nil && currentLock.OwnerID != request.OwnerID {
+		// Case where new owner is elected
+		if lockAfterUpsert.Epoch <= currentLock.Epoch {
+			return nil, errors.New("failed to acquire lock during upsert: lock_key=%s", request.LockKey)
+		}
+	}
 
 	return &lock.AcquireResponse{
-		OwnerID:  request.OwnerID,
-		Acquired: acquired,
+		OwnerID:  lockAfterUpsert.OwnerID,
+		Acquired: false,
+		Epoch:    lockAfterUpsert.Epoch,
 	}, nil
 }
 

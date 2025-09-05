@@ -24,10 +24,22 @@ type AcquireRequest struct {
 type AcquireResponse struct {
 	OwnerID  string
 	Acquired bool
+	Epoch    int64 // Version token for optimistic locking
 }
 
 type ReleaseRequest struct {
 }
 
 type ReleaseResponse struct {
+}
+
+// DBLockRecord represents a lock record as stored in the database
+type DBLockRecord struct {
+	LockKey   string    `json:"lock_key"`
+	OwnerID   string    `json:"owner_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Epoch     int64     `json:"epoch"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
