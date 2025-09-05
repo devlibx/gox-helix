@@ -27,7 +27,7 @@ func (s *service) Acquire(ctx context.Context, request *lock.AcquireRequest) (*l
 	currentLock, err := s.Queries.GetLockByLockKey(ctx, request.LockKey)
 	if errors2.Is(err, sql.ErrNoRows) {
 		err = nil
-	} else {
+	} else if err != nil {
 		return nil, errors.Wrap(err, "failed to acquire lock: lock_key=%s", request.LockKey)
 	}
 
