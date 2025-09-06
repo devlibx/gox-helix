@@ -33,24 +33,32 @@ All detailed design documents are maintained in the `doc/design` directory.
 
 ## Current Work Status
 
-We are currently refactoring the distributed locking mechanism into a generic, reusable Go package. This involves:
+We are actively developing the core framework, focusing on robust distributed coordination and cluster management. Key achievements include:
 
-1.  **New Package Structure:** The lock implementation is now located under `pkg/common/lock`, with MySQL-specific details in `pkg/common/lock/mysql/database`.
-2.  **Schema Updates:** The `locks` table has been renamed to `helix_locks` and a new `status` column (TINYINT: `1` for active, `0` for inactive, `2` for deletable) has been added to manage lock states. An `epoch` column has also been introduced for optimistic locking.
-3.  **SQLC Configuration:** `sqlc.yaml` and `queries.sql` have been updated for the new lock package, and `RETURNING` clauses were removed for MySQL compatibility.
-4.  **Interface Definition:** A `Locker` interface has been defined in `pkg/common/lock/lock.go` to abstract the locking operations.
-5.  **Acquire Method Implementation:** The `Acquire` method for the MySQL locker has been implemented, leveraging a refined `TryUpsertLock` SQL query for robust and atomic lock acquisition, including handling renewals and expired locks.
-6.  **Comprehensive Test Suite:** An extensive suite of unit and integration tests has been developed for the lock package in `pkg/common/lock/mysql/service_test.go`, using a real MySQL database and environment variables for configuration, ensuring high reliability and correctness.
+1.  **Distributed Locking Mechanism:**
+    *   **New Package Structure:** The lock implementation is located under `pkg/common/lock`, with MySQL-specific details in `pkg/common/lock/mysql/database`.
+    *   **Schema Updates:** The `locks` table has been renamed to `helix_locks`, and a `status` column (TINYINT: `1` for active, `0` for inactive, `2` for deletable) and an `epoch` column for optimistic locking have been added.
+    *   **SQLC Configuration:** `sqlc.yaml` and `queries.sql` have been updated for the new lock package.
+    *   **Interface Definition:** A `Locker` interface has been defined in `pkg/common/lock/lock.go`.
+    *   **Acquire Method Implementation:** The `Acquire` method for the MySQL locker has been implemented, leveraging a refined `TryUpsertLock` SQL query for robust and atomic lock acquisition.
+    *   **Comprehensive Test Suite:** An extensive suite of unit and integration tests has been developed for the lock package.
+
+2.  **Cluster Node Management:**
+    *   **New Module:** Introduced `pkg/cluster` for managing cluster nodes, with MySQL database interactions in `pkg/cluster/mysql/database`.
+    *   **`helix_nodes` Table:** A new table to store cluster node information, including registration, heartbeating, and status tracking.
+    *   **Cluster Metadata Management:** Implemented the `helix_cluster` table and associated database operations to manage metadata about different clusters, domains, and task lists.
+    *   **Core Cluster Management Logic:** Implemented node registration, automated heartbeating, inactive node detection, and retrieval of active nodes.
+    *   **Distributed Controller Election:** Integrated the distributed locking mechanism to ensure only a single cluster manager instance is responsible for critical cluster-wide operations like marking inactive nodes.
 
 ## Next Steps
 
 To continue, we need to:
 
-1.  **Implement Release and Renew:** Implement the `Release` and `Renew` methods of the `Locker` interface in `pkg/common/lock/mysql/service.go`.
-2.  **Integrate Locker:** Integrate the new `Locker` package into the coordinator election logic.
-3.  **Refine Coordinator Logic:** Implement the full coordinator election and failover logic using the new `Locker` interface.
-4.  **Worker Registration and Heartbeating:** Implement the worker registration and heartbeating mechanisms.
-5.  **Partition Allocation:** Develop the logic for dynamic partition allocation and rebalancing.
+1.  **Complete Locker Interface:** Implement the `Release` and `Renew` methods of the `Locker` interface in `pkg/common/lock/mysql/service.go`.
+2.  **Refine Coordinator Logic:** Implement the full coordinator election and failover logic using the new `Locker` and cluster management modules.
+3.  **Worker Registration and Heartbeating:** Fully integrate and refine the worker registration and heartbeating mechanisms within the cluster management module.
+4.  **Partition Allocation:** Develop the logic for dynamic partition allocation and rebalancing among active workers.
+5.  **Task Scheduling:** Implement the core task scheduling and execution framework.
 
 ## Roadmap
 
