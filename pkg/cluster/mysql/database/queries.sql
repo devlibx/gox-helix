@@ -30,3 +30,21 @@ WHERE cluster_name = ? AND status = 1 AND last_hb_time < ?;
 SELECT cluster_name, node_uuid, node_metadata, last_hb_time, status, created_at, updated_at
 FROM helix_nodes
 WHERE cluster_name = ? AND node_uuid = ? AND status = 1;
+
+-- name: UpsertCluster :exec
+INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+VALUES (?, ?, ?, ?, ?, 1)
+ON DUPLICATE KEY UPDATE
+    partition_count = VALUES(partition_count),
+    metadata = VALUES(metadata),
+    status = 1;
+
+-- name: GetClustersByDomain :many
+SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+FROM helix_cluster
+WHERE cluster = ? AND domain = ? AND status = 1;
+
+-- name: GetCluster :one
+SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+FROM helix_cluster
+WHERE cluster = ? AND domain = ? AND tasklist = ? AND status = 1;

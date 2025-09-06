@@ -84,6 +84,109 @@ func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*Ge
 	return items, nil
 }
 
+const getCluster = `-- name: GetCluster :one
+SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+FROM helix_cluster
+WHERE cluster = ? AND domain = ? AND tasklist = ? AND status = 1
+`
+
+type GetClusterParams struct {
+	Cluster  string `json:"cluster"`
+	Domain   string `json:"domain"`
+	Tasklist string `json:"tasklist"`
+}
+
+type GetClusterRow struct {
+	Cluster        string         `json:"cluster"`
+	Domain         string         `json:"domain"`
+	Tasklist       string         `json:"tasklist"`
+	Metadata       sql.NullString `json:"metadata"`
+	PartitionCount uint32         `json:"partition_count"`
+	Status         int8           `json:"status"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+// GetCluster
+//
+//	SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+//	FROM helix_cluster
+//	WHERE cluster = ? AND domain = ? AND tasklist = ? AND status = 1
+func (q *Queries) GetCluster(ctx context.Context, arg GetClusterParams) (*GetClusterRow, error) {
+	row := q.queryRow(ctx, q.getClusterStmt, getCluster, arg.Cluster, arg.Domain, arg.Tasklist)
+	var i GetClusterRow
+	err := row.Scan(
+		&i.Cluster,
+		&i.Domain,
+		&i.Tasklist,
+		&i.Metadata,
+		&i.PartitionCount,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
+const getClustersByDomain = `-- name: GetClustersByDomain :many
+SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+FROM helix_cluster
+WHERE cluster = ? AND domain = ? AND status = 1
+`
+
+type GetClustersByDomainParams struct {
+	Cluster string `json:"cluster"`
+	Domain  string `json:"domain"`
+}
+
+type GetClustersByDomainRow struct {
+	Cluster        string         `json:"cluster"`
+	Domain         string         `json:"domain"`
+	Tasklist       string         `json:"tasklist"`
+	Metadata       sql.NullString `json:"metadata"`
+	PartitionCount uint32         `json:"partition_count"`
+	Status         int8           `json:"status"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
+// GetClustersByDomain
+//
+//	SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+//	FROM helix_cluster
+//	WHERE cluster = ? AND domain = ? AND status = 1
+func (q *Queries) GetClustersByDomain(ctx context.Context, arg GetClustersByDomainParams) ([]*GetClustersByDomainRow, error) {
+	rows, err := q.query(ctx, q.getClustersByDomainStmt, getClustersByDomain, arg.Cluster, arg.Domain)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*GetClustersByDomainRow{}
+	for rows.Next() {
+		var i GetClustersByDomainRow
+		if err := rows.Scan(
+			&i.Cluster,
+			&i.Domain,
+			&i.Tasklist,
+			&i.Metadata,
+			&i.PartitionCount,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNodeById = `-- name: GetNodeById :one
 SELECT cluster_name, node_uuid, node_metadata, last_hb_time, status, created_at, updated_at
 FROM helix_nodes
@@ -165,6 +268,42 @@ type UpdateHeartbeatParams struct {
 //	WHERE cluster_name = ? AND node_uuid = ? AND (status = 1 OR status = 0)
 func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) error {
 	_, err := q.exec(ctx, q.updateHeartbeatStmt, updateHeartbeat, arg.LastHbTime, arg.ClusterName, arg.NodeUuid)
+	return err
+}
+
+const upsertCluster = `-- name: UpsertCluster :exec
+INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+VALUES (?, ?, ?, ?, ?, 1)
+ON DUPLICATE KEY UPDATE
+    partition_count = VALUES(partition_count),
+    metadata = VALUES(metadata),
+    status = 1
+`
+
+type UpsertClusterParams struct {
+	Cluster        string         `json:"cluster"`
+	Domain         string         `json:"domain"`
+	Tasklist       string         `json:"tasklist"`
+	PartitionCount uint32         `json:"partition_count"`
+	Metadata       sql.NullString `json:"metadata"`
+}
+
+// UpsertCluster
+//
+//	INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+//	VALUES (?, ?, ?, ?, ?, 1)
+//	ON DUPLICATE KEY UPDATE
+//	    partition_count = VALUES(partition_count),
+//	    metadata = VALUES(metadata),
+//	    status = 1
+func (q *Queries) UpsertCluster(ctx context.Context, arg UpsertClusterParams) error {
+	_, err := q.exec(ctx, q.upsertClusterStmt, upsertCluster,
+		arg.Cluster,
+		arg.Domain,
+		arg.Tasklist,
+		arg.PartitionCount,
+		arg.Metadata,
+	)
 	return err
 }
 

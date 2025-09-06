@@ -30,6 +30,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getActiveNodesStmt, err = db.PrepareContext(ctx, getActiveNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetActiveNodes: %w", err)
 	}
+	if q.getClusterStmt, err = db.PrepareContext(ctx, getCluster); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCluster: %w", err)
+	}
+	if q.getClustersByDomainStmt, err = db.PrepareContext(ctx, getClustersByDomain); err != nil {
+		return nil, fmt.Errorf("error preparing query GetClustersByDomain: %w", err)
+	}
 	if q.getNodeByIdStmt, err = db.PrepareContext(ctx, getNodeById); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNodeById: %w", err)
 	}
@@ -38,6 +44,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateHeartbeatStmt, err = db.PrepareContext(ctx, updateHeartbeat); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateHeartbeat: %w", err)
+	}
+	if q.upsertClusterStmt, err = db.PrepareContext(ctx, upsertCluster); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertCluster: %w", err)
 	}
 	if q.upsertNodeStmt, err = db.PrepareContext(ctx, upsertNode); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertNode: %w", err)
@@ -57,6 +66,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getActiveNodesStmt: %w", cerr)
 		}
 	}
+	if q.getClusterStmt != nil {
+		if cerr := q.getClusterStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getClusterStmt: %w", cerr)
+		}
+	}
+	if q.getClustersByDomainStmt != nil {
+		if cerr := q.getClustersByDomainStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getClustersByDomainStmt: %w", cerr)
+		}
+	}
 	if q.getNodeByIdStmt != nil {
 		if cerr := q.getNodeByIdStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNodeByIdStmt: %w", cerr)
@@ -70,6 +89,11 @@ func (q *Queries) Close() error {
 	if q.updateHeartbeatStmt != nil {
 		if cerr := q.updateHeartbeatStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateHeartbeatStmt: %w", cerr)
+		}
+	}
+	if q.upsertClusterStmt != nil {
+		if cerr := q.upsertClusterStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertClusterStmt: %w", cerr)
 		}
 	}
 	if q.upsertNodeStmt != nil {
@@ -114,25 +138,31 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                    DBTX
-	tx                    *sql.Tx
-	deregisterNodeStmt    *sql.Stmt
-	getActiveNodesStmt    *sql.Stmt
-	getNodeByIdStmt       *sql.Stmt
-	markInactiveNodesStmt *sql.Stmt
-	updateHeartbeatStmt   *sql.Stmt
-	upsertNodeStmt        *sql.Stmt
+	db                      DBTX
+	tx                      *sql.Tx
+	deregisterNodeStmt      *sql.Stmt
+	getActiveNodesStmt      *sql.Stmt
+	getClusterStmt          *sql.Stmt
+	getClustersByDomainStmt *sql.Stmt
+	getNodeByIdStmt         *sql.Stmt
+	markInactiveNodesStmt   *sql.Stmt
+	updateHeartbeatStmt     *sql.Stmt
+	upsertClusterStmt       *sql.Stmt
+	upsertNodeStmt          *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                    tx,
-		tx:                    tx,
-		deregisterNodeStmt:    q.deregisterNodeStmt,
-		getActiveNodesStmt:    q.getActiveNodesStmt,
-		getNodeByIdStmt:       q.getNodeByIdStmt,
-		markInactiveNodesStmt: q.markInactiveNodesStmt,
-		updateHeartbeatStmt:   q.updateHeartbeatStmt,
-		upsertNodeStmt:        q.upsertNodeStmt,
+		db:                      tx,
+		tx:                      tx,
+		deregisterNodeStmt:      q.deregisterNodeStmt,
+		getActiveNodesStmt:      q.getActiveNodesStmt,
+		getClusterStmt:          q.getClusterStmt,
+		getClustersByDomainStmt: q.getClustersByDomainStmt,
+		getNodeByIdStmt:         q.getNodeByIdStmt,
+		markInactiveNodesStmt:   q.markInactiveNodesStmt,
+		updateHeartbeatStmt:     q.updateHeartbeatStmt,
+		upsertClusterStmt:       q.upsertClusterStmt,
+		upsertNodeStmt:          q.upsertNodeStmt,
 	}
 }

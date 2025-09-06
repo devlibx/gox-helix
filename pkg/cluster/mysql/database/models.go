@@ -9,6 +9,18 @@ import (
 	"time"
 )
 
+type HelixCluster struct {
+	ID             uint64         `json:"id"`
+	Cluster        string         `json:"cluster"`
+	Domain         string         `json:"domain"`
+	Tasklist       string         `json:"tasklist"`
+	Metadata       sql.NullString `json:"metadata"`
+	PartitionCount uint32         `json:"partition_count"`
+	Status         int8           `json:"status"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
 type HelixNode struct {
 	ID           uint64         `json:"id"`
 	ClusterName  string         `json:"cluster_name"`
