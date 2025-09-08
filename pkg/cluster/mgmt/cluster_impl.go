@@ -3,6 +3,8 @@ package managment
 import (
 	"context"
 	"database/sql"
+
+	errors2 "errors"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
@@ -12,6 +14,10 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+)
+
+var (
+	errorReregistrationNeeded = errors2.New("reregistrationNeeded")
 )
 
 type clusterManagerImpl struct {
@@ -86,7 +92,30 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 
 	// Start
 	go func() {
-		c.startHeartbeatForNode(ctx, c.nodes[nodeId])
+		runLoop := true
+		for runLoop {
+			if c.shutdown {
+				runLoop = false
+				return
+			}
+
+			if err := c.startHeartbeatForNode(ctx, c.nodes[nodeId]); errors2.Is(err, errorReregistrationNeeded) {
+				c.nodeMutex.Lock()
+				delete(c.nodes, nodeId)
+				c.nodeMutex.Unlock()
+				for {
+					if _, err := c.RegisterNode(ctx, request); err == nil {
+						slog.Info(nodeId, "node registered successfully", slog.String("cluster", c.Name), slog.String("nodeId", nodeId))
+						break
+					} else {
+						time.Sleep(1 * time.Second)
+					}
+				}
+				runLoop = false
+			}
+			runLoop = false
+		}
+
 	}()
 
 	return &NodeRegisterResponse{NodeId: nodeId}, nil
@@ -114,32 +143,35 @@ func (c *clusterManagerImpl) GetActiveNodes(ctx context.Context) ([]Node, error)
 	return toRet, nil
 }
 
-func (c *clusterManagerImpl) startHeartbeatForNode(ctx context.Context, node *Node) {
-	node.StartHeartbeat(ctx, func(ctx context.Context, node *Node) {
-		for {
-
-			// Stop HB if we need to shut down
-			if c.shutdown {
-				slog.Warn("node healthcheck shutting down", slog.String("cluster", c.Name), slog.String("nodeId", node.Id))
-				break
-			}
-
-			// Ensure we update the DB for each node
-			currentTime := c.Now()
-			if err := c.dbInterface.UpdateHeartbeat(ctx, helixClusterMysql.UpdateHeartbeatParams{
-				LastHbTime:  currentTime,
-				ClusterName: c.Name,
-				NodeUuid:    node.Id,
-			}); err != nil {
-				slog.Warn("failed to update node heartbeat", slog.String("cluster", c.Name), slog.String("node", node.Id), slog.String("error", err.Error()))
-			} else {
-				slog.Debug("node heartbeat updated", slog.String("cluster", c.Name), slog.String("node", node.Id))
-			}
-
-			// Sleet between each HB update
-			c.Sleep(3 * time.Second)
+func (c *clusterManagerImpl) startHeartbeatForNode(ctx context.Context, node *Node) error {
+	for {
+		// Stop HB if we need to shut down
+		if c.shutdown {
+			slog.Warn("node healthcheck shutting down", slog.String("cluster", c.Name), slog.String("nodeId", node.Id))
+			break
 		}
-	})
+
+		// Ensure we update the DB for each node
+		currentTime := c.Now()
+		if result, err := c.dbInterface.UpdateHeartbeat(ctx, helixClusterMysql.UpdateHeartbeatParams{
+			LastHbTime:  currentTime,
+			ClusterName: c.Name,
+			NodeUuid:    node.Id,
+		}); err != nil {
+			slog.Warn("failed to update node heartbeat", slog.String("cluster", c.Name), slog.String("node", node.Id), slog.String("error", err.Error()))
+		} else {
+			if rows, err := result.RowsAffected(); err == nil && rows == 0 {
+				slog.Warn("node heartbeat updated (failed - must have been marked inactive)", slog.String("cluster", c.Name), slog.String("node", node.Id))
+				return errorReregistrationNeeded
+			}
+			slog.Debug("node heartbeat updated", slog.String("cluster", c.Name), slog.String("node", node.Id))
+		}
+
+		// Sleet between each HB update
+		c.Sleep(3 * time.Second)
+	}
+
+	return nil
 }
 
 func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {

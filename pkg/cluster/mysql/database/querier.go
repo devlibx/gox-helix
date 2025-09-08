@@ -6,6 +6,7 @@ package helixClusterMysql
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
@@ -88,8 +89,8 @@ type Querier interface {
 	//      version      = version + 1
 	//  WHERE cluster_name = ?
 	//    AND node_uuid = ?
-	//    AND (status = 1 OR status = 0)
-	UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) error
+	//    AND (status = 1)
+	UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) (sql.Result, error)
 	//UpsertCluster
 	//
 	//  INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)

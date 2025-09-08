@@ -6,14 +6,13 @@ ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
                         status        = 1;
 
 
--- name: UpdateHeartbeat :exec
+-- name: UpdateHeartbeat :execresult
 UPDATE helix_nodes
 SET last_hb_time = ?,
-    status       = 1,
     version      = version + 1
 WHERE cluster_name = ?
   AND node_uuid = ?
-  AND (status = 1 OR status = 0);
+  AND status = 1;
 
 -- name: DeregisterNode :exec
 UPDATE helix_nodes

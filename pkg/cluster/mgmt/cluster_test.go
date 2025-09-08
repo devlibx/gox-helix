@@ -48,6 +48,7 @@ type testSetup struct {
 	locker              lock.Locker
 	clusterManager      ClusterManager
 	helixClusterMysqlDb *helixClusterMysql.Queries
+	sqlDb               *sql.DB
 }
 
 func (s *ServiceTestSuite) makeApp() *testSetup {
@@ -77,6 +78,7 @@ func (s *ServiceTestSuite) makeApp() *testSetup {
 			&ts.locker,
 			&ts.clusterManager,
 			&ts.helixClusterMysqlDb,
+			&ts.sqlDb,
 		),
 	)
 	err := ts.app.Start(context.Background())
@@ -129,6 +131,50 @@ func (s *ServiceTestSuite) TestRegisterNode() {
 	}
 	s.Require().True(firstVersion >= 1, "First version should be > 0")
 
+}
+
+// We do not expect any node without register
+func (s *ServiceTestSuite) TestSimulateHbFailAndReregister() {
+	ts := s.makeApp()
+	cm := ts.clusterManager
+	db := ts.helixClusterMysqlDb
+	// sqlDb := ts.sqlDb
+
+	nr, err := cm.RegisterNode(context.Background(), NodeRegisterRequest{Cluster: ts.clusterName})
+	s.Require().NoError(err, "Failed to register node")
+	s.Require().NotEmpty(nr.NodeId)
+	nodes, err := cm.GetActiveNodes(context.Background())
+	s.Require().NoError(err, "Failed to get active nodes")
+	s.Require().Len(nodes, 1)
+
+	err = db.DeregisterNode(context.Background(), helixClusterMysql.DeregisterNodeParams{
+		ClusterName: ts.clusterName,
+		NodeUuid:    nr.NodeId,
+	})
+	s.Require().NoError(err, "Failed to cleanup helix_locks table")
+	nodes, err = cm.GetActiveNodes(context.Background())
+	s.Require().NoError(err, "Failed to get active nodes")
+
+	for _, node := range nodes {
+		if node.Id == nr.NodeId {
+			s.Require().Failf("we should never get this node as active as we marked it inactive", "nodeId=%s, nodeStatus=%d", node.Id, node.Status)
+		}
+	}
+
+	gotNodeReregistered := false
+	for i := 0; i < 5; i++ {
+		nodes, err = cm.GetActiveNodes(context.Background())
+		if len(nodes) == 1 {
+			gotNodeReregistered = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	s.Require().True(gotNodeReregistered, "We should never get this node reregistered")
+
+	nodes, err = cm.GetActiveNodes(context.Background())
+	s.Require().Len(nodes, 1)
+	s.Require().False(nr.NodeId == nodes[0].Id, "old and new id must not be same")
 }
 
 func TestServiceTestSuite(t *testing.T) {

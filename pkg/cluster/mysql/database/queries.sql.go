@@ -313,14 +313,14 @@ func (q *Queries) MarkInactiveNodes(ctx context.Context, arg MarkInactiveNodesPa
 	return err
 }
 
-const updateHeartbeat = `-- name: UpdateHeartbeat :exec
+const updateHeartbeat = `-- name: UpdateHeartbeat :execresult
 UPDATE helix_nodes
 SET last_hb_time = ?,
     status       = 1,
     version      = version + 1
 WHERE cluster_name = ?
   AND node_uuid = ?
-  AND (status = 1 OR status = 0)
+  AND (status = 1)
 `
 
 type UpdateHeartbeatParams struct {
@@ -337,10 +337,9 @@ type UpdateHeartbeatParams struct {
 //	    version      = version + 1
 //	WHERE cluster_name = ?
 //	  AND node_uuid = ?
-//	  AND (status = 1 OR status = 0)
-func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) error {
-	_, err := q.exec(ctx, q.updateHeartbeatStmt, updateHeartbeat, arg.LastHbTime, arg.ClusterName, arg.NodeUuid)
-	return err
+//	  AND (status = 1)
+func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) (sql.Result, error) {
+	return q.exec(ctx, q.updateHeartbeatStmt, updateHeartbeat, arg.LastHbTime, arg.ClusterName, arg.NodeUuid)
 }
 
 const upsertCluster = `-- name: UpsertCluster :exec
