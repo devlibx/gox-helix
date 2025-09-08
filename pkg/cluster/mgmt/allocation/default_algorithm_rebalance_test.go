@@ -102,6 +102,10 @@ func (h *TestHelper) printAssignments(title string, nodePartitionMappings map[st
 			nodeReleaseCounts[partition.OwnerNode]++
 		case managment.PartitionAllocationUnassigned:
 			unassignedPartitions = append(unassignedPartitions, fmt.Sprintf("P%s(U)", partition.Partition))
+		case managment.PartitionAllocationPlaceholder:
+			nodeAssignments[partition.OwnerNode] = append(nodeAssignments[partition.OwnerNode], 
+				fmt.Sprintf("P%s(PH)", partition.Partition))
+			nodeActiveCounts[partition.OwnerNode]++  // Count placeholders as active for display
 		}
 	}
 	
@@ -138,7 +142,7 @@ func (h *TestHelper) printAssignments(title string, nodePartitionMappings map[st
 		totalActivePartitions, totalReleasePartitions, len(unassignedPartitions), totalPartitions)
 		
 	// Legend
-	fmt.Printf("Legend: (A)=Assigned, (RR)=RequestedRelease, (PR)=PendingRelease, (U)=Unassigned\n")
+	fmt.Printf("Legend: (A)=Assigned, (RR)=RequestedRelease, (PR)=PendingRelease, (U)=Unassigned, (PH)=Placeholder\n")
 }
 
 // validateNoPartitionsLost ensures all partitions are accounted for
@@ -150,8 +154,11 @@ func (h *TestHelper) validateNoPartitionsLost(t *testing.T, beforeMappings, afte
 		beforePartitions[partitionId] = true
 	}
 	
-	for partitionId := range afterMappings {
-		afterPartitions[partitionId] = true
+	for partitionId, partition := range afterMappings {
+		// Exclude placeholder partitions - they represent future assignments, not actual partitions
+		if partition.Status != managment.PartitionAllocationPlaceholder {
+			afterPartitions[partitionId] = true
+		}
 	}
 	
 	// Check no partitions were lost
@@ -159,12 +166,17 @@ func (h *TestHelper) validateNoPartitionsLost(t *testing.T, beforeMappings, afte
 		assert.True(t, afterPartitions[partitionId], "Partition %s was lost during rebalancing", partitionId)
 	}
 	
-	// Check no partitions were added unexpectedly
+	// Check no partitions were added unexpectedly (excluding placeholders)
 	for partitionId := range afterPartitions {
-		assert.True(t, beforePartitions[partitionId], "Partition %s was unexpectedly added during rebalancing", partitionId)
+		if !beforePartitions[partitionId] {
+			// Allow placeholder-related entries but check they don't represent actual new partitions
+			if _, exists := afterMappings[partitionId]; exists && afterMappings[partitionId].Status != managment.PartitionAllocationPlaceholder {
+				assert.True(t, beforePartitions[partitionId], "Non-placeholder partition %s was unexpectedly added during rebalancing", partitionId)
+			}
+		}
 	}
 	
-	assert.Equal(t, len(beforePartitions), len(afterPartitions), "Total partition count changed")
+	assert.Equal(t, len(beforePartitions), len(afterPartitions), "Total actual partition count should remain unchanged (excluding placeholders)")
 }
 
 // runDistributeWorkTest executes the distributeWork method and provides visualization
@@ -311,16 +323,19 @@ func TestDistributeWork_RebalanceOverAllocatedNodes(t *testing.T) {
 	
 	helper.runDistributeWorkTest(t, "Rebalance Over-allocated Nodes", taskListInfo, nodePartitionMappings, nodes)
 	
-	// Verify all nodes have exactly 3 partitions
-	nodeCounts := make(map[string]int)
+	// Verify balanced distribution (counting both assigned partitions and placeholders)
+	nodeEffectiveCounts := make(map[string]int)
 	for _, partition := range nodePartitionMappings {
-		if partition.Status == managment.PartitionAllocationAssigned {
-			nodeCounts[partition.OwnerNode]++
+		if partition.Status == managment.PartitionAllocationAssigned || 
+		   partition.Status == managment.PartitionAllocationPlaceholder {
+			nodeEffectiveCounts[partition.OwnerNode]++
 		}
 	}
 	
-	for nodeId, count := range nodeCounts {
-		assert.Equal(t, 3, count, "Node %s should have exactly 3 partitions", nodeId)
+	// With two-phase migration, each node should have 3 effective partitions (assigned + placeholders)
+	for _, nodeId := range []string{"node1", "node2", "node3", "node4", "node5"} {
+		count := nodeEffectiveCounts[nodeId]
+		assert.Equal(t, 3, count, "Node %s should have exactly 3 effective partitions (assigned + placeholders)", nodeId)
 	}
 }
 
@@ -640,7 +655,97 @@ func TestDistributeWork_ZeroPartitions(t *testing.T) {
 	assert.Equal(t, 0, len(nodePartitionMappings), "Should have no partitions")
 }
 
-// Test 10: More nodes than partitions
+// Test 10: Two-phase migration - adding new nodes to imbalanced cluster
+func TestDistributeWork_TwoPhaseGracefulMigration(t *testing.T) {
+	helper := NewTestHelper()
+	
+	taskListInfo := managment.TaskListInfo{
+		PartitionCount: 14, // User's exact scenario: 14 partitions 
+	}
+	
+	// Initial state: 3 nodes with imbalanced distribution (5,4,4 partitions)
+	// Node1: 5 partitions (1-5 in user's numbering, 0-4 in zero-based)
+	// Node2: 4 partitions (6-9 in user's numbering, 5-8 in zero-based) 
+	// Node3: 4 partitions (10-13 in user's numbering, 9-12 in zero-based)
+	// Missing: partitions 13 (user's 14th partition)
+	nodePartitionMappings := make(map[string]*nodePartitionMapping)
+	
+	// Node1: 5 partitions (over-allocated)
+	for i := 0; i < 5; i++ {
+		partitionId := fmt.Sprintf("%d", i)
+		nodePartitionMappings[partitionId] = helper.createPartition(partitionId, "node1", managment.PartitionAllocationAssigned)
+	}
+	
+	// Node2: 4 partitions 
+	for i := 5; i < 9; i++ {
+		partitionId := fmt.Sprintf("%d", i)
+		nodePartitionMappings[partitionId] = helper.createPartition(partitionId, "node2", managment.PartitionAllocationAssigned)
+	}
+	
+	// Node3: 4 partitions
+	for i := 9; i < 13; i++ {
+		partitionId := fmt.Sprintf("%d", i)
+		nodePartitionMappings[partitionId] = helper.createPartition(partitionId, "node3", managment.PartitionAllocationAssigned)
+	}
+	
+	// Missing partition (unassigned)
+	nodePartitionMappings["13"] = helper.createPartition("13", "", managment.PartitionAllocationUnassigned)
+	
+	// Add new nodes 4,5 - these should trigger two-phase migration
+	nodes := helper.createNodes([]string{"node1", "node2", "node3", "node4", "node5"})
+	
+	helper.runDistributeWorkTest(t, "Two-Phase Graceful Migration", taskListInfo, nodePartitionMappings, nodes)
+	
+	// Verify two-phase migration results
+	// Target: 14 partitions / 5 nodes = 2.8, so 4 nodes get 3, 1 node gets 2
+	
+	// Count active and placeholder partitions per node
+	nodeActiveCounts := make(map[string]int)
+	nodePlaceholderCounts := make(map[string]int)
+	nodeReleaseCounts := make(map[string]int)
+	
+	for _, partition := range nodePartitionMappings {
+		switch partition.Status {
+		case managment.PartitionAllocationAssigned:
+			nodeActiveCounts[partition.OwnerNode]++
+		case managment.PartitionAllocationPlaceholder:
+			nodePlaceholderCounts[partition.OwnerNode]++
+		case managment.PartitionAllocationRequestedRelease:
+			nodeReleaseCounts[partition.OwnerNode]++
+		}
+	}
+	
+	fmt.Printf("\n=== TWO-PHASE MIGRATION ANALYSIS ===\n")
+	for _, nodeId := range []string{"node1", "node2", "node3", "node4", "node5"} {
+		active := nodeActiveCounts[nodeId]
+		placeholder := nodePlaceholderCounts[nodeId]
+		release := nodeReleaseCounts[nodeId]
+		effective := active + placeholder
+		fmt.Printf("Node %s: Active=%d, Placeholder=%d, Release=%d, Effective=%d\n", 
+			nodeId, active, placeholder, release, effective)
+	}
+	
+	// Verify that new nodes (node4, node5) received placeholders
+	assert.True(t, nodePlaceholderCounts["node4"] > 0 || nodePlaceholderCounts["node5"] > 0, 
+		"New nodes should have placeholders for future assignments")
+	
+	// Verify that over-allocated nodes have release partitions
+	assert.True(t, nodeReleaseCounts["node1"] > 0, 
+		"Over-allocated node1 should have partitions marked for release")
+	
+	// Verify load is balanced when considering placeholders
+	totalEffective := 0
+	for _, nodeId := range []string{"node1", "node2", "node3", "node4", "node5"} {
+		effective := nodeActiveCounts[nodeId] + nodePlaceholderCounts[nodeId]
+		totalEffective += effective
+		assert.True(t, effective >= 2 && effective <= 3, 
+			"Node %s should have 2-3 effective partitions, got %d", nodeId, effective)
+	}
+	
+	assert.Equal(t, 14, totalEffective, "Total effective partitions should equal original count")
+}
+
+// Test 11: More nodes than partitions
 func TestDistributeWork_MoreNodesThanPartitions(t *testing.T) {
 	helper := NewTestHelper()
 	

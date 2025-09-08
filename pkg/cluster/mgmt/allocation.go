@@ -27,6 +27,7 @@ const (
 	PartitionAllocationUnassigned       PartitionAllocationStatus = "unassigned"
 	PartitionAllocationRequestedRelease PartitionAllocationStatus = "requested-release"
 	PartitionAllocationPendingRelease   PartitionAllocationStatus = "pending-release"
+	PartitionAllocationPlaceholder      PartitionAllocationStatus = "placeholder"
 )
 
 type PartitionAllocationInfo struct {

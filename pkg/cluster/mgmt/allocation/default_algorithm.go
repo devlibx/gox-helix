@@ -196,6 +196,13 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 				partition.OwnerNode = ""
 				unassignedPartitions = append(unassignedPartitions, partition)
 			}
+		case managment.PartitionAllocationPlaceholder:
+			// Placeholders count toward active load for rebalancing calculations
+			// but represent future assignments that don't exist in DB yet
+			if _, exists := nodeActiveCount[partition.OwnerNode]; exists {
+				nodeCurrentAllocations[partition.OwnerNode] = append(nodeCurrentAllocations[partition.OwnerNode], partition)
+				nodeActiveCount[partition.OwnerNode]++
+			}
 		case managment.PartitionAllocationRequestedRelease, managment.PartitionAllocationPendingRelease:
 			// Keep with current owner but don't count as active - don't reassign these
 			// These partitions are already correctly assigned and should not be moved
@@ -216,7 +223,11 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 	// Sort nodes by current allocation count for balanced assignment
 	sort.Strings(activeNodeIds)
 
-	// Step 1: Assign unassigned partitions to nodes with lowest counts
+	// Step 1: Two-phase migration - create placeholders for graceful rebalancing FIRST
+	// This handles scenarios like adding new nodes to an imbalanced cluster
+	d.implementTwoPhaseRebalancing(nodePartitionMappings, nodeActiveCount, activeNodeIds, getTargetForNode)
+
+	// Step 2: Assign unassigned partitions to nodes with lowest counts
 	for _, partition := range unassignedPartitions {
 		// Find node with lowest current count that hasn't reached its target
 		var minNodeId string
@@ -251,7 +262,7 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 		nodeActiveCount[minNodeId]++
 	}
 
-	// Step 2: Rebalance over-allocated nodes (move excess active partitions)
+	// Step 3: Rebalance over-allocated nodes (move excess active partitions)
 	// Only move partitions if there are under-allocated nodes that need them
 	for i, nodeId := range activeNodeIds {
 		target := getTargetForNode(i)
@@ -299,12 +310,113 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 	return nodePartitionMappings
 }
 
+// implementTwoPhaseRebalancing creates placeholders for graceful partition migration
+// This enables adding new nodes to imbalanced clusters without immediate disruption
+func (d *defaultAlgorithm) implementTwoPhaseRebalancing(
+	nodePartitionMappings map[string]*nodePartitionMapping,
+	nodeActiveCount map[string]int,
+	activeNodeIds []string,
+	getTargetForNode func(int) int) {
+
+	// Identify significantly under-allocated nodes (likely new nodes)
+	underAllocatedNodes := make([]string, 0)
+	overAllocatedNodes := make([]string, 0)
+
+	for i, nodeId := range activeNodeIds {
+		target := getTargetForNode(i)
+		currentCount := nodeActiveCount[nodeId]
+
+		// Consider a node significantly under-allocated if it has 0 partitions
+		// and target > 0 (indicating new node joining existing cluster)
+		if currentCount == 0 && target > 0 {
+			underAllocatedNodes = append(underAllocatedNodes, nodeId)
+		}
+
+		// Consider a node over-allocated if it exceeds target 
+		// This triggers two-phase migration when adding new nodes to imbalanced clusters
+		if currentCount > target {
+			overAllocatedNodes = append(overAllocatedNodes, nodeId)
+		}
+	}
+
+	// Only proceed if we have both under-allocated and over-allocated nodes
+	// This indicates a scenario where graceful migration would be beneficial
+	if len(underAllocatedNodes) == 0 || len(overAllocatedNodes) == 0 {
+		return
+	}
+
+	// Create placeholders and mark partitions for release
+	underAllocatedIndex := 0
+	for _, overNodeId := range overAllocatedNodes {
+		if underAllocatedIndex >= len(underAllocatedNodes) {
+			break // No more under-allocated nodes to assign to
+		}
+
+		// Find target count for this over-allocated node
+		overNodeTarget := 0
+		for i, nodeId := range activeNodeIds {
+			if nodeId == overNodeId {
+				overNodeTarget = getTargetForNode(i)
+				break
+			}
+		}
+
+		currentCount := nodeActiveCount[overNodeId]
+		excessCount := currentCount - overNodeTarget
+
+		// Mark excess partitions as RequestedRelease and create placeholders
+		partitionsToRelease := 0
+		for partitionId, partition := range nodePartitionMappings {
+			if partition.OwnerNode == overNodeId && 
+			   partition.Status == managment.PartitionAllocationAssigned && 
+			   partitionsToRelease < excessCount {
+
+				// Mark partition for release
+				partition.Status = managment.PartitionAllocationRequestedRelease
+				partition.UpdatedTime = d.Now()
+
+				// Create placeholder on under-allocated node
+				underNodeId := underAllocatedNodes[underAllocatedIndex]
+				placeholderKey := partitionId + "_placeholder_" + underNodeId
+				nodePartitionMappings[placeholderKey] = &nodePartitionMapping{
+					OwnerNode:   underNodeId,
+					Partition:   partition.Partition,
+					Status:      managment.PartitionAllocationPlaceholder,
+					UpdatedTime: d.Now(),
+				}
+
+				// Update active count for load balancing
+				nodeActiveCount[overNodeId]--        // Reduce over-allocated node count
+				nodeActiveCount[underNodeId]++       // Increase under-allocated node count
+
+				partitionsToRelease++
+
+				// Move to next under-allocated node when current one is sufficiently filled
+				underNodeTarget := 0
+				for i, nodeId := range activeNodeIds {
+					if nodeId == underNodeId {
+						underNodeTarget = getTargetForNode(i)
+						break
+					}
+				}
+				if nodeActiveCount[underNodeId] >= underNodeTarget {
+					underAllocatedIndex++
+					if underAllocatedIndex >= len(underAllocatedNodes) {
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
 func (d *defaultAlgorithm) updateAssignment(ctx context.Context, taskListInfo managment.TaskListInfo, nodePartitionMappings map[string]*nodePartitionMapping) error {
 
 	allocations := map[string]*managment.Allocation{}
 	for _, v := range nodePartitionMappings {
-		// Skip unassigned partitions - they don't get stored in DB
-		if v.OwnerNode == "" || v.Status == managment.PartitionAllocationUnassigned {
+		// Skip unassigned partitions and placeholders - they don't get stored in DB
+		// Placeholders are used for calculation only and filtered out before final result
+		if v.OwnerNode == "" || v.Status == managment.PartitionAllocationUnassigned || v.Status == managment.PartitionAllocationPlaceholder {
 			continue
 		}
 		
