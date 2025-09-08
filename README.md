@@ -49,6 +49,7 @@ We are actively developing the core framework, focusing on robust distributed co
     *   **Cluster Metadata Management:** Implemented the `helix_cluster` table and associated database operations to manage metadata about different clusters, domains, and task lists.
     *   **Core Cluster Management Logic:** Implemented node registration, automated heartbeating, inactive node detection, and retrieval of active nodes.
     *   **Distributed Controller Election:** Integrated the distributed locking mechanism to ensure only a single cluster manager instance is responsible for critical cluster-wide operations like marking inactive nodes.
+    *   **Automatic Node Re-registration:** Implemented a mechanism to automatically re-register nodes if their heartbeat fails, ensuring high availability.
 
 ## Next Steps
 
