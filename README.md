@@ -54,6 +54,7 @@ We are actively developing the core framework, focusing on robust distributed co
 3.  **Partition Allocation:**
     *   **`helix_allocation` Table:** A new table to store partition allocation information for each node in the cluster.
     *   **Default Allocation Algorithm:** Implemented a default algorithm for partition allocation, which is responsible for distributing partitions among the active nodes in the cluster.
+    *   **Partition Rebalancing:** Implemented a rebalancing algorithm to distribute partitions evenly among active nodes.
 
 ## Next Steps
 
