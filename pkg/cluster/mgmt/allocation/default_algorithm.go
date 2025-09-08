@@ -142,46 +142,146 @@ func (d *defaultAlgorithm) addMissingPartitionsAsUnsigned(taskListInfo managment
 
 func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, nodePartitionMappings map[string]*nodePartitionMapping, nodes []*helixClusterMysql.GetActiveNodesRow) {
 
-	newMapping := map[string][]*nodePartitionMapping{}
-
-	mappings := map[string]*nodePartitionMapping{}
-	for id, node := range nodePartitionMappings {
-		mappings[id] = node
+	// Get active node IDs
+	activeNodeIds := make([]string, 0)
+	for _, node := range nodes {
+		if node.Status == helixClusterMysql.NodeStatusActive {
+			activeNodeIds = append(activeNodeIds, node.NodeUuid)
+		}
 	}
 
-	// First step - assign existing partitions to existing nodes
-	for id, node := range mappings {
-		if node.Status == managment.PartitionAllocationAssigned {
-			if _, ok := nodePartitionMappings[id]; !ok {
-				newMapping[id] = make([]*nodePartitionMapping, 0)
+	if len(activeNodeIds) == 0 {
+		return // No active nodes to distribute to
+	}
+
+	// Calculate target distribution
+	targetPerNode := taskListInfo.PartitionCount / len(activeNodeIds)
+	extraPartitions := taskListInfo.PartitionCount % len(activeNodeIds)
+
+	// Build current allocation map by node (only count active partitions)
+	nodeCurrentAllocations := make(map[string][]*nodePartitionMapping)
+	nodeActiveCount := make(map[string]int)
+	unassignedPartitions := make([]*nodePartitionMapping, 0)
+
+	// Initialize maps for all active nodes
+	for _, nodeId := range activeNodeIds {
+		nodeCurrentAllocations[nodeId] = make([]*nodePartitionMapping, 0)
+		nodeActiveCount[nodeId] = 0
+	}
+
+	// Categorize partitions
+	for _, partition := range nodePartitionMappings {
+		switch partition.Status {
+		case managment.PartitionAllocationAssigned:
+			// Only count if node is active
+			if _, exists := nodeActiveCount[partition.OwnerNode]; exists {
+				nodeCurrentAllocations[partition.OwnerNode] = append(nodeCurrentAllocations[partition.OwnerNode], partition)
+				nodeActiveCount[partition.OwnerNode]++
+			} else {
+				// Node is inactive, treat partition as unassigned
+				partition.Status = managment.PartitionAllocationUnassigned
+				partition.OwnerNode = ""
+				unassignedPartitions = append(unassignedPartitions, partition)
 			}
-			newMapping[id] = append(newMapping[id], node)
-			delete(mappings, id)
+		case managment.PartitionAllocationRequestedRelease, managment.PartitionAllocationPendingRelease:
+			// Keep with current owner but don't count as active - don't reassign these
+			// These partitions are already correctly assigned and should not be moved
+			continue
+		case managment.PartitionAllocationUnassigned:
+			unassignedPartitions = append(unassignedPartitions, partition)
 		}
 	}
 
-	type t struct {
-		key      string
-		mappings []*nodePartitionMapping
+	// Helper function to get target for a node (some get +1 for remainder)
+	getTargetForNode := func(nodeIndex int) int {
+		if nodeIndex < extraPartitions {
+			return targetPerNode + 1
+		}
+		return targetPerNode
 	}
 
-	// Now we will have unsigned partitions left in mappings
-	for _, node := range mappings {
-		keys := make([]t, 0)
-		for k, v := range newMapping {
-			keys = append(keys, t{
-				key:      k,
-				mappings: v,
-			})
-		}
-		sort.Slice(keys, func(i, j int) bool {
-			return len(keys[i].mappings) < len(keys[j].mappings)
-		})
+	// Sort nodes by current allocation count for balanced assignment
+	sort.Strings(activeNodeIds)
 
-		topId := keys[0]
-		if _, ok := newMapping[topId.key]; !ok {
-			newMapping[topId.key] = make([]*nodePartitionMapping, 0)
+	// Step 1: Assign unassigned partitions to nodes with lowest counts
+	for _, partition := range unassignedPartitions {
+		// Find node with lowest current count that hasn't reached its target
+		var minNodeId string
+		minCount := taskListInfo.PartitionCount + 1 // Start with impossible high value
+		
+		for i, nodeId := range activeNodeIds {
+			target := getTargetForNode(i)
+			if nodeActiveCount[nodeId] < target && nodeActiveCount[nodeId] < minCount {
+				minCount = nodeActiveCount[nodeId]
+				minNodeId = nodeId
+			}
 		}
-		newMapping[topId.key] = append(newMapping[topId.key], node)
+
+		// If no node is under target, assign to node with lowest count overall
+		if minNodeId == "" {
+			minCount = nodeActiveCount[activeNodeIds[0]]
+			minNodeId = activeNodeIds[0]
+			
+			for _, nodeId := range activeNodeIds {
+				if nodeActiveCount[nodeId] < minCount {
+					minCount = nodeActiveCount[nodeId]
+					minNodeId = nodeId
+				}
+			}
+		}
+
+		// Assign partition to this node
+		partition.OwnerNode = minNodeId
+		partition.Status = managment.PartitionAllocationAssigned
+		partition.UpdatedTime = d.Now()
+		nodeCurrentAllocations[minNodeId] = append(nodeCurrentAllocations[minNodeId], partition)
+		nodeActiveCount[minNodeId]++
 	}
+
+	// Step 2: Rebalance over-allocated nodes (move excess active partitions)
+	// Only move partitions if there are under-allocated nodes that need them
+	for i, nodeId := range activeNodeIds {
+		target := getTargetForNode(i)
+		currentCount := nodeActiveCount[nodeId]
+		
+		if currentCount > target {
+			partitionsToMove := make([]*nodePartitionMapping, 0)
+			
+			// Select excess partitions to move (from the end of the list for simplicity)
+			nodePartitions := nodeCurrentAllocations[nodeId]
+			if len(nodePartitions) > target {
+				partitionsToMove = nodePartitions[target:]
+				nodeCurrentAllocations[nodeId] = nodePartitions[:target]
+				nodeActiveCount[nodeId] = target
+			}
+			
+			// Redistribute excess partitions to under-allocated nodes
+			for _, partitionToMove := range partitionsToMove {
+				// Find a node that needs more partitions
+				var targetNodeId string
+				for j, candidateNodeId := range activeNodeIds {
+					targetForNode := getTargetForNode(j)
+					if nodeActiveCount[candidateNodeId] < targetForNode {
+						targetNodeId = candidateNodeId
+						break
+					}
+				}
+
+				if targetNodeId != "" {
+					// Move partition to this node
+					partitionToMove.OwnerNode = targetNodeId
+					partitionToMove.UpdatedTime = d.Now()
+					nodeCurrentAllocations[targetNodeId] = append(nodeCurrentAllocations[targetNodeId], partitionToMove)
+					nodeActiveCount[targetNodeId]++
+				} else {
+					// No under-allocated nodes found, keep with current node
+					nodeCurrentAllocations[nodeId] = append(nodeCurrentAllocations[nodeId], partitionToMove)
+					nodeActiveCount[nodeId]++
+				}
+			}
+		}
+	}
+
+	// The original nodePartitionMappings map has been updated by reference
+	// All partitions now have their correct OwnerNode and Status set
 }
