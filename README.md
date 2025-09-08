@@ -29,7 +29,7 @@ Key Concepts:
 
 The coordinator election and distributed locking mechanism utilize a dedicated `helix_locks` table in MySQL. This table employs a `TINYINT` type for the `status` field (e.g., `1` for active, `0` for inactive, `2` for deletable) and incorporates an `epoch` field for optimistic locking, preventing split-brain scenarios and ensuring consistent state.
 
-All detailed design documents are maintained in the `doc/design` directory.
+All detailed design documents are maintained in the `doc/design` directory. A detailed explanation of the partition rebalancing algorithm can be found in [doc/design/partition_rebalancing.md](doc/design/partition_rebalancing.md).
 
 ## Current Work Status
 
