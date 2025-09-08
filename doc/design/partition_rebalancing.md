@@ -8,53 +8,60 @@ The goal of the rebalancing algorithm is to distribute partitions evenly among t
 
 ## Algorithm
 
-The rebalancing algorithm works in two steps:
+The rebalancing algorithm works in a two-phase process, especially beneficial for graceful rebalancing when new nodes are added to an imbalanced cluster:
 
-1.  **Assign unassigned partitions:** The algorithm first assigns any unassigned partitions to the active nodes with the fewest number of assigned partitions.
-2.  **Rebalance over-allocated nodes:** The algorithm then rebalances the partitions from over-allocated nodes to under-allocated nodes.
+1.  **Two-Phase Migration (Placeholder Creation):**
+    *   Identifies significantly under-allocated nodes (e.g., newly added nodes) and over-allocated nodes.
+    *   For excess partitions on over-allocated nodes, it marks them for `RequestedRelease` and simultaneously creates `Placeholder` partitions on the target under-allocated nodes. This allows for a graceful transfer without immediate disruption.
+    *   The `Placeholder` partitions count towards the target load of the new nodes, guiding the rebalancing process.
 
-### Step 1: Assign Unassigned Partitions
+2.  **Assign Unassigned Partitions:**
+    *   The algorithm assigns any truly `Unassigned` partitions (including those that were `RequestedRelease` or `PendingRelease` and timed out) to the active nodes with the fewest number of assigned partitions (considering `Placeholder` partitions as assigned for load calculation).
 
-The algorithm iterates through all the unassigned partitions and assigns them to the active node with the fewest number of assigned partitions. This is done to ensure that the partitions are distributed as evenly as possible among the active nodes.
+3.  **Rebalance Over-allocated Nodes (Direct Reassignment):**
+    *   After the two-phase migration and initial unassigned partition assignment, the algorithm checks for any remaining over-allocated nodes.
+    *   It directly reassigns excess `Assigned` partitions from these nodes to under-allocated nodes.
 
-The target number of partitions per node is calculated as `total_partitions / total_active_nodes`. Any remainder is distributed one by one to the nodes.
+### Detailed Steps
 
-### Step 2: Rebalance Over-allocated Nodes
-
-After assigning all the unassigned partitions, the algorithm checks for any over-allocated nodes. An over-allocated node is a node that has more partitions than the target number of partitions per node.
-
-If an over-allocated node is found, the algorithm moves the excess partitions to under-allocated nodes. An under-allocated node is a node that has fewer partitions than the target number of partitions per node.
-
-This step ensures that the partitions are distributed as evenly as possible among the active nodes, even if the initial distribution of partitions was not even.
+*   **Identify Active Nodes:** The algorithm first identifies all currently active nodes in the cluster.
+*   **Categorize Partitions:** Existing partitions are categorized based on their current status (`Assigned`, `RequestedRelease`, `PendingRelease`, `Unassigned`, `Placeholder`).
+*   **Calculate Target Distribution:** The target number of partitions per active node is calculated as `total_partitions / total_active_nodes`. Any remainder is distributed one by one to ensure an even spread.
+*   **Graceful Migration (Two-Phase):** If new nodes are introduced or significant imbalance exists, partitions are first marked for release on over-allocated nodes, and corresponding placeholders are created on under-allocated nodes. This allows for a controlled, non-disruptive transfer.
+*   **Assign Unassigned:** All `Unassigned` partitions (including those from timed-out releases or inactive nodes) are assigned to the active nodes with the lowest current load (considering placeholders).
+*   **Direct Rebalancing:** Any remaining over-allocated nodes (after the two-phase migration and unassigned assignment) will have their excess partitions directly reassigned to under-allocated nodes.
 
 ## Partition States
 
 The algorithm considers the following partition states:
 
-*   `Assigned`: The partition is assigned to an active node.
+*   `Assigned`: The partition is actively assigned to a node.
 *   `Unassigned`: The partition is not assigned to any node.
-*   `RequestedRelease`: The partition is in the process of being released from a node.
-*   `PendingRelease`: The partition is pending release from a node.
+*   `RequestedRelease`: The partition is in the process of being released from a node, initiated by the rebalancer.
+*   `PendingRelease`: The partition is pending release from a node, typically after a `RequestedRelease` and awaiting confirmation.
+*   `Placeholder`: A temporary state indicating that a partition is intended to be assigned to a new node as part of a graceful two-phase migration. These count towards a node's load for rebalancing calculations but are not yet physically assigned.
 
-Partitions in the `RequestedRelease` and `PendingRelease` states are not considered for rebalancing. This is to prevent race conditions and to ensure that the partitions are released gracefully.
+Partitions in `RequestedRelease` and `PendingRelease` states are generally not directly reassigned by the rebalancer unless their release times out, at which point they become `Unassigned`. `Placeholder` partitions are used internally for load balancing calculations during the two-phase migration.
 
 ## Stickiness
 
-The algorithm preserves stickiness. This means that if a partition is already assigned to a node, it will not be moved to another node unless the node is over-allocated. This is to minimize the number of partition movements and to reduce the overhead of rebalancing.
+The algorithm preserves stickiness. This means that if a partition is already `Assigned` to a node, it will not be moved to another node unless the node becomes over-allocated or inactive. This minimizes partition movements and reduces rebalancing overhead.
 
 ## Scenarios
 
-The rebalancing algorithm is tested with a variety of scenarios to ensure that it is robust and that it can handle different situations. The test cases are located in `pkg/cluster/mgmt/allocation/default_algorithm_rebalance_test.go`.
+The rebalancing algorithm is tested with a variety of scenarios to ensure that it is robust and that it can handle different situations. The test cases are located in `pkg/cluster/mgmt/allocation/default_algorithm_rebalance_e2e_test.go` and `pkg/cluster/mgmt/allocation/default_algorithm_rebalance_test.go`.
 
 The following are some of the scenarios that are tested:
 
-*   **Basic even distribution:** 15 partitions are distributed evenly among 5 nodes (3 partitions per node).
-*   **Uneven distribution with remainder:** 16 partitions are distributed among 5 nodes (one node gets 4 partitions, and the other four nodes get 3 partitions).
-*   **Rebalancing over-allocated nodes:** Partitions are moved from over-allocated nodes to under-allocated nodes.
-*   **Partitions in release states:** Partitions in the `RequestedRelease` and `PendingRelease` states are not moved.
-*   **Inactive node partitions:** Partitions assigned to inactive nodes are reassigned to active nodes.
-*   **No active nodes:** No partitions are assigned if there are no active nodes.
-*   **Single node:** All partitions are assigned to the single active node.
-*   **Complex mixed scenario:** A complex scenario with a mix of different partition states and node states.
-*   **Zero partitions:** No partitions are assigned if there are no partitions.
-*   **More nodes than partitions:** Partitions are distributed among the nodes, and some nodes may not have any partitions.
+*   **Basic even distribution:** Partitions are distributed evenly among active nodes.
+*   **Uneven distribution with remainder:** Handles scenarios where partitions cannot be perfectly divided among nodes.
+*   **Rebalancing over-allocated nodes:** Partitions are moved from nodes with excess load to those with less.
+*   **Partitions in release states:** Verifies that partitions in `RequestedRelease` or `PendingRelease` states are handled correctly and not immediately reassigned.
+*   **Inactive node partitions:** Partitions previously assigned to inactive nodes are detected and reassigned to active nodes.
+*   **No active nodes:** Ensures the algorithm behaves correctly when no active nodes are available.
+*   **Single node:** Verifies that all partitions are assigned to a single node if it's the only active one.
+*   **Complex mixed scenario:** Tests the algorithm's behavior with a combination of different partition states and node loads.
+*   **Zero partitions:** Confirms correct handling when there are no partitions to distribute.
+*   **More nodes than partitions:** Ensures partitions are distributed, and some nodes may remain without partitions.
+*   **Two-phase graceful migration:** Tests the new two-phase rebalancing mechanism, including placeholder creation and timed release of partitions, for adding new nodes to an imbalanced cluster.
+*   **Stickiness preservation when node goes down:** Verifies that partitions assigned to a node that becomes inactive are correctly redistributed to other active nodes while preserving stickiness for partitions on remaining active nodes.
