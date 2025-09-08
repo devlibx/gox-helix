@@ -1,6 +1,6 @@
 # Partition Rebalancing Algorithm
 
-This document describes the partition rebalancing algorithm used in `gox-helix`. The algorithm is implemented in the `distributeWork` function in `pkg/cluster/mgmt/allocation/default_algorithm.go`.
+This document describes the partition rebalancing algorithm used in `gox-helix`. The algorithm is implemented in `pkg/cluster/mgmt/allocation/rebalance_algo_v1.go` and is used by `pkg/cluster/mgmt/allocation/default_algorithm.go`.
 
 ## Goal
 
@@ -49,7 +49,7 @@ The algorithm preserves stickiness. This means that if a partition is already `A
 
 ## Scenarios
 
-The rebalancing algorithm is tested with a variety of scenarios to ensure that it is robust and that it can handle different situations. The test cases are located in `pkg/cluster/mgmt/allocation/default_algorithm_rebalance_e2e_test.go` and `pkg/cluster/mgmt/allocation/default_algorithm_rebalance_test.go`.
+The rebalancing algorithm is tested with a variety of scenarios to ensure that it is robust and that it can handle different situations. The test cases are located in `pkg/cluster/mgmt/allocation/rebalance_algo_v1_test.go` and `pkg/cluster/mgmt/allocation/default_algorithm_rebalance_e2e_test.go`.
 
 The following are some of the scenarios that are tested:
 
