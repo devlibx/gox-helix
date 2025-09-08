@@ -190,7 +190,12 @@ func (h *TestHelper) runDistributeWorkTest(t *testing.T, testName string, taskLi
 	h.printAssignments("BEFORE REBALANCING", beforeMappings, nodes)
 	
 	// Execute the algorithm
-	h.algorithm.distributeWork(taskListInfo, nodePartitionMappings, nodes)
+	updatedMappings := h.algorithm.distributeWork(taskListInfo, nodePartitionMappings, nodes)
+	
+	// Copy the result back to nodePartitionMappings for consistency with existing test logic
+	for id, mapping := range updatedMappings {
+		nodePartitionMappings[id] = mapping
+	}
 	
 	// Print after state
 	h.printAssignments("AFTER REBALANCING", nodePartitionMappings, nodes)

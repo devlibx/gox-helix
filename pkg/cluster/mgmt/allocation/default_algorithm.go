@@ -74,7 +74,12 @@ func (d *defaultAlgorithm) CalculateAllocation(ctx context.Context, taskListInfo
 	// Finally we will have a map where we have all partition mapping - all assigned, and un-assigned
 	d.addMissingPartitionsAsUnsigned(taskListInfo, nodePartitionMappings)
 
-	_, _ = allocations, nodes
+	// Distribute the work to balance partitions across active nodes
+	balancedMappings := d.distributeWork(taskListInfo, nodePartitionMappings, nodes)
+
+	// Convert the balanced mappings back to the response format
+	// TODO: Implement conversion from balancedMappings to AllocationResponse
+	_, _ = allocations, balancedMappings
 	return nil, nil
 }
 
@@ -140,7 +145,7 @@ func (d *defaultAlgorithm) addMissingPartitionsAsUnsigned(taskListInfo managment
 	}
 }
 
-func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, nodePartitionMappings map[string]*nodePartitionMapping, nodes []*helixClusterMysql.GetActiveNodesRow) {
+func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, nodePartitionMappings map[string]*nodePartitionMapping, nodes []*helixClusterMysql.GetActiveNodesRow) map[string]*nodePartitionMapping {
 
 	// Get active node IDs
 	activeNodeIds := make([]string, 0)
@@ -151,7 +156,7 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 	}
 
 	if len(activeNodeIds) == 0 {
-		return // No active nodes to distribute to
+		return nodePartitionMappings // No active nodes to distribute to, return unchanged
 	}
 
 	// Calculate target distribution
@@ -282,6 +287,6 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 		}
 	}
 
-	// The original nodePartitionMappings map has been updated by reference
-	// All partitions now have their correct OwnerNode and Status set
+	// Return the updated mapping with all partitions correctly assigned
+	return nodePartitionMappings
 }
