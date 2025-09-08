@@ -28,6 +28,7 @@ type HelixNode struct {
 	NodeMetadata sql.NullString `json:"node_metadata"`
 	LastHbTime   time.Time      `json:"last_hb_time"`
 	Status       int8           `json:"status"`
+	Version      int32          `json:"version"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 }

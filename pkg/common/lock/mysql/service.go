@@ -8,6 +8,7 @@ import (
 	"github.com/devlibx/gox-base/v2/errors"
 	"github.com/devlibx/gox-helix/pkg/common/lock"
 	helixMysql "github.com/devlibx/gox-helix/pkg/common/lock/mysql/database"
+	_ "github.com/go-sql-driver/mysql"
 	"time"
 )
 

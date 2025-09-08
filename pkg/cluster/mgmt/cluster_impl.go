@@ -7,6 +7,7 @@ import (
 	"github.com/devlibx/gox-base/v2/errors"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 	"github.com/devlibx/gox-helix/pkg/common/lock"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"log/slog"
 	"sync"
@@ -15,11 +16,11 @@ import (
 
 type clusterManagerImpl struct {
 	gox.CrossFunction
-	
+
 	clusterManagerConfig *ClusterManagerConfig
 
 	// database access
-	dbInterface helixClusterMysql.Queries
+	dbInterface *helixClusterMysql.Queries
 	locker      lock.Locker
 
 	Name string
@@ -36,12 +37,13 @@ type clusterManagerImpl struct {
 func NewClusterManager(
 	cf gox.CrossFunction,
 	config *ClusterManagerConfig,
-	dbInterface helixClusterMysql.Queries,
+	dbInterface *helixClusterMysql.Queries,
 	locker lock.Locker,
 ) (ClusterManager, error) {
 
 	cm := &clusterManagerImpl{
 		CrossFunction:        cf,
+		Name:                 config.Name,
 		clusterManagerConfig: config,
 		dbInterface:          dbInterface,
 		nodeMutex:            &sync.RWMutex{},
@@ -76,8 +78,10 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 	c.nodeMutex.Lock()
 	defer c.nodeMutex.Unlock()
 	c.nodes[nodeId] = &Node{
-		Cluster: request.Cluster,
-		Id:      nodeId,
+		CrossFunction: c.CrossFunction,
+		Cluster:       request.Cluster,
+		Id:            nodeId,
+		Status:        helixClusterMysql.NodeStatusActive,
 	}
 
 	// Start

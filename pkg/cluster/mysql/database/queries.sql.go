@@ -12,9 +12,12 @@ import (
 )
 
 const deregisterNode = `-- name: DeregisterNode :exec
-UPDATE helix_nodes 
-SET status = 0
-WHERE cluster_name = ? AND node_uuid = ? AND status = 1
+UPDATE helix_nodes
+SET status  = 0,
+    version = version + 1
+WHERE cluster_name = ?
+  AND node_uuid = ?
+  AND status = 1
 `
 
 type DeregisterNodeParams struct {
@@ -25,17 +28,28 @@ type DeregisterNodeParams struct {
 // DeregisterNode
 //
 //	UPDATE helix_nodes
-//	SET status = 0
-//	WHERE cluster_name = ? AND node_uuid = ? AND status = 1
+//	SET status  = 0,
+//	    version = version + 1
+//	WHERE cluster_name = ?
+//	  AND node_uuid = ?
+//	  AND status = 1
 func (q *Queries) DeregisterNode(ctx context.Context, arg DeregisterNodeParams) error {
 	_, err := q.exec(ctx, q.deregisterNodeStmt, deregisterNode, arg.ClusterName, arg.NodeUuid)
 	return err
 }
 
 const getActiveNodes = `-- name: GetActiveNodes :many
-SELECT cluster_name, node_uuid, node_metadata, last_hb_time, status, created_at, updated_at
+SELECT cluster_name,
+       node_uuid,
+       node_metadata,
+       last_hb_time,
+       status,
+       version,
+       created_at,
+       updated_at
 FROM helix_nodes
-WHERE cluster_name = ? AND status = 1
+WHERE cluster_name = ?
+  AND status = 1
 `
 
 type GetActiveNodesRow struct {
@@ -44,15 +58,24 @@ type GetActiveNodesRow struct {
 	NodeMetadata sql.NullString `json:"node_metadata"`
 	LastHbTime   time.Time      `json:"last_hb_time"`
 	Status       int8           `json:"status"`
+	Version      int32          `json:"version"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 }
 
 // GetActiveNodes
 //
-//	SELECT cluster_name, node_uuid, node_metadata, last_hb_time, status, created_at, updated_at
+//	SELECT cluster_name,
+//	       node_uuid,
+//	       node_metadata,
+//	       last_hb_time,
+//	       status,
+//	       version,
+//	       created_at,
+//	       updated_at
 //	FROM helix_nodes
-//	WHERE cluster_name = ? AND status = 1
+//	WHERE cluster_name = ?
+//	  AND status = 1
 func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*GetActiveNodesRow, error) {
 	rows, err := q.query(ctx, q.getActiveNodesStmt, getActiveNodes, clusterName)
 	if err != nil {
@@ -68,6 +91,7 @@ func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*Ge
 			&i.NodeMetadata,
 			&i.LastHbTime,
 			&i.Status,
+			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -85,9 +109,19 @@ func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*Ge
 }
 
 const getCluster = `-- name: GetCluster :one
-SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+SELECT cluster,
+       domain,
+       tasklist,
+       metadata,
+       partition_count,
+       status,
+       created_at,
+       updated_at
 FROM helix_cluster
-WHERE cluster = ? AND domain = ? AND tasklist = ? AND status = 1
+WHERE cluster = ?
+  AND domain = ?
+  AND tasklist = ?
+  AND status = 1
 `
 
 type GetClusterParams struct {
@@ -109,9 +143,19 @@ type GetClusterRow struct {
 
 // GetCluster
 //
-//	SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+//	SELECT cluster,
+//	       domain,
+//	       tasklist,
+//	       metadata,
+//	       partition_count,
+//	       status,
+//	       created_at,
+//	       updated_at
 //	FROM helix_cluster
-//	WHERE cluster = ? AND domain = ? AND tasklist = ? AND status = 1
+//	WHERE cluster = ?
+//	  AND domain = ?
+//	  AND tasklist = ?
+//	  AND status = 1
 func (q *Queries) GetCluster(ctx context.Context, arg GetClusterParams) (*GetClusterRow, error) {
 	row := q.queryRow(ctx, q.getClusterStmt, getCluster, arg.Cluster, arg.Domain, arg.Tasklist)
 	var i GetClusterRow
@@ -129,9 +173,18 @@ func (q *Queries) GetCluster(ctx context.Context, arg GetClusterParams) (*GetClu
 }
 
 const getClustersByDomain = `-- name: GetClustersByDomain :many
-SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+SELECT cluster,
+       domain,
+       tasklist,
+       metadata,
+       partition_count,
+       status,
+       created_at,
+       updated_at
 FROM helix_cluster
-WHERE cluster = ? AND domain = ? AND status = 1
+WHERE cluster = ?
+  AND domain = ?
+  AND status = 1
 `
 
 type GetClustersByDomainParams struct {
@@ -152,9 +205,18 @@ type GetClustersByDomainRow struct {
 
 // GetClustersByDomain
 //
-//	SELECT cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+//	SELECT cluster,
+//	       domain,
+//	       tasklist,
+//	       metadata,
+//	       partition_count,
+//	       status,
+//	       created_at,
+//	       updated_at
 //	FROM helix_cluster
-//	WHERE cluster = ? AND domain = ? AND status = 1
+//	WHERE cluster = ?
+//	  AND domain = ?
+//	  AND status = 1
 func (q *Queries) GetClustersByDomain(ctx context.Context, arg GetClustersByDomainParams) ([]*GetClustersByDomainRow, error) {
 	rows, err := q.query(ctx, q.getClustersByDomainStmt, getClustersByDomain, arg.Cluster, arg.Domain)
 	if err != nil {
@@ -188,9 +250,11 @@ func (q *Queries) GetClustersByDomain(ctx context.Context, arg GetClustersByDoma
 }
 
 const getNodeById = `-- name: GetNodeById :one
-SELECT cluster_name, node_uuid, node_metadata, last_hb_time, status, created_at, updated_at
+SELECT id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
 FROM helix_nodes
-WHERE cluster_name = ? AND node_uuid = ? AND status = 1
+WHERE cluster_name = ?
+  AND node_uuid = ?
+  AND status = 1
 `
 
 type GetNodeByIdParams struct {
@@ -198,30 +262,24 @@ type GetNodeByIdParams struct {
 	NodeUuid    string `json:"node_uuid"`
 }
 
-type GetNodeByIdRow struct {
-	ClusterName  string         `json:"cluster_name"`
-	NodeUuid     string         `json:"node_uuid"`
-	NodeMetadata sql.NullString `json:"node_metadata"`
-	LastHbTime   time.Time      `json:"last_hb_time"`
-	Status       int8           `json:"status"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-}
-
 // GetNodeById
 //
-//	SELECT cluster_name, node_uuid, node_metadata, last_hb_time, status, created_at, updated_at
+//	SELECT id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
 //	FROM helix_nodes
-//	WHERE cluster_name = ? AND node_uuid = ? AND status = 1
-func (q *Queries) GetNodeById(ctx context.Context, arg GetNodeByIdParams) (*GetNodeByIdRow, error) {
+//	WHERE cluster_name = ?
+//	  AND node_uuid = ?
+//	  AND status = 1
+func (q *Queries) GetNodeById(ctx context.Context, arg GetNodeByIdParams) (*HelixNode, error) {
 	row := q.queryRow(ctx, q.getNodeByIdStmt, getNodeById, arg.ClusterName, arg.NodeUuid)
-	var i GetNodeByIdRow
+	var i HelixNode
 	err := row.Scan(
+		&i.ID,
 		&i.ClusterName,
 		&i.NodeUuid,
 		&i.NodeMetadata,
 		&i.LastHbTime,
 		&i.Status,
+		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -229,9 +287,12 @@ func (q *Queries) GetNodeById(ctx context.Context, arg GetNodeByIdParams) (*GetN
 }
 
 const markInactiveNodes = `-- name: MarkInactiveNodes :exec
-UPDATE helix_nodes 
-SET status = 0
-WHERE cluster_name = ? AND status = 1 AND last_hb_time < ?
+UPDATE helix_nodes
+SET status  = 0,
+    version = version + 1
+WHERE cluster_name = ?
+  AND status = 1
+  AND last_hb_time < ?
 `
 
 type MarkInactiveNodesParams struct {
@@ -242,17 +303,24 @@ type MarkInactiveNodesParams struct {
 // MarkInactiveNodes
 //
 //	UPDATE helix_nodes
-//	SET status = 0
-//	WHERE cluster_name = ? AND status = 1 AND last_hb_time < ?
+//	SET status  = 0,
+//	    version = version + 1
+//	WHERE cluster_name = ?
+//	  AND status = 1
+//	  AND last_hb_time < ?
 func (q *Queries) MarkInactiveNodes(ctx context.Context, arg MarkInactiveNodesParams) error {
 	_, err := q.exec(ctx, q.markInactiveNodesStmt, markInactiveNodes, arg.ClusterName, arg.LastHbTime)
 	return err
 }
 
 const updateHeartbeat = `-- name: UpdateHeartbeat :exec
-UPDATE helix_nodes 
-SET last_hb_time = ?, status = 1
-WHERE cluster_name = ? AND node_uuid = ? AND (status = 1 OR status = 0)
+UPDATE helix_nodes
+SET last_hb_time = ?,
+    status       = 1,
+    version      = version + 1
+WHERE cluster_name = ?
+  AND node_uuid = ?
+  AND (status = 1 OR status = 0)
 `
 
 type UpdateHeartbeatParams struct {
@@ -264,8 +332,12 @@ type UpdateHeartbeatParams struct {
 // UpdateHeartbeat
 //
 //	UPDATE helix_nodes
-//	SET last_hb_time = ?, status = 1
-//	WHERE cluster_name = ? AND node_uuid = ? AND (status = 1 OR status = 0)
+//	SET last_hb_time = ?,
+//	    status       = 1,
+//	    version      = version + 1
+//	WHERE cluster_name = ?
+//	  AND node_uuid = ?
+//	  AND (status = 1 OR status = 0)
 func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) error {
 	_, err := q.exec(ctx, q.updateHeartbeatStmt, updateHeartbeat, arg.LastHbTime, arg.ClusterName, arg.NodeUuid)
 	return err
@@ -274,10 +346,9 @@ func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams
 const upsertCluster = `-- name: UpsertCluster :exec
 INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
 VALUES (?, ?, ?, ?, ?, 1)
-ON DUPLICATE KEY UPDATE
-    partition_count = VALUES(partition_count),
-    metadata = VALUES(metadata),
-    status = 1
+ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
+                        metadata        = VALUES(metadata),
+                        status          = 1
 `
 
 type UpsertClusterParams struct {
@@ -292,10 +363,9 @@ type UpsertClusterParams struct {
 //
 //	INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
 //	VALUES (?, ?, ?, ?, ?, 1)
-//	ON DUPLICATE KEY UPDATE
-//	    partition_count = VALUES(partition_count),
-//	    metadata = VALUES(metadata),
-//	    status = 1
+//	ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
+//	                        metadata        = VALUES(metadata),
+//	                        status          = 1
 func (q *Queries) UpsertCluster(ctx context.Context, arg UpsertClusterParams) error {
 	_, err := q.exec(ctx, q.upsertClusterStmt, upsertCluster,
 		arg.Cluster,
@@ -310,10 +380,9 @@ func (q *Queries) UpsertCluster(ctx context.Context, arg UpsertClusterParams) er
 const upsertNode = `-- name: UpsertNode :exec
 INSERT INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
 VALUES (?, ?, ?, ?, 1)
-ON DUPLICATE KEY UPDATE
-    node_metadata = VALUES(node_metadata),
-    last_hb_time = VALUES(last_hb_time),
-    status = 1
+ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
+                        last_hb_time  = VALUES(last_hb_time),
+                        status        = 1
 `
 
 type UpsertNodeParams struct {
@@ -327,10 +396,9 @@ type UpsertNodeParams struct {
 //
 //	INSERT INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
 //	VALUES (?, ?, ?, ?, 1)
-//	ON DUPLICATE KEY UPDATE
-//	    node_metadata = VALUES(node_metadata),
-//	    last_hb_time = VALUES(last_hb_time),
-//	    status = 1
+//	ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
+//	                        last_hb_time  = VALUES(last_hb_time),
+//	                        status        = 1
 func (q *Queries) UpsertNode(ctx context.Context, arg UpsertNodeParams) error {
 	_, err := q.exec(ctx, q.upsertNodeStmt, upsertNode,
 		arg.ClusterName,
