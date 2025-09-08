@@ -12,17 +12,21 @@ import (
 
 type defaultAlgorithm struct {
 	gox.CrossFunction
-	dbInterface     *helixClusterMysql.Queries
-	AlgorithmConfig managment.AlgorithmConfig
+	dbInterface     helixClusterMysql.Querier
+	AlgorithmConfig *managment.AlgorithmConfig
 }
 
 func NewDefaultAlgorithm(
 	cf gox.CrossFunction,
 	clusterDbInterface helixClusterMysql.Querier,
+	algorithmConfig *managment.AlgorithmConfig,
+
 ) (managment.Algorithm, error) {
 
 	da := &defaultAlgorithm{
-		CrossFunction: cf,
+		CrossFunction:   cf,
+		dbInterface:     clusterDbInterface,
+		AlgorithmConfig: algorithmConfig,
 	}
 	return da, nil
 }
