@@ -119,6 +119,3 @@ We welcome contributions from the community. Please read our [CONTRIBUTING.md](C
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
-
-## Dummy Message
-This is a dummy message.
