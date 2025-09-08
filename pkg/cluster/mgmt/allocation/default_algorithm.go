@@ -2,6 +2,7 @@ package allocation
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
@@ -77,10 +78,13 @@ func (d *defaultAlgorithm) CalculateAllocation(ctx context.Context, taskListInfo
 	// Distribute the work to balance partitions across active nodes
 	balancedMappings := d.distributeWork(taskListInfo, nodePartitionMappings, nodes)
 
-	// Convert the balanced mappings back to the response format
-	// TODO: Implement conversion from balancedMappings to AllocationResponse
-	_, _ = allocations, balancedMappings
-	return nil, nil
+	// Update assignment in DB
+	err = d.updateAssignment(ctx, taskListInfo, balancedMappings)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to update assignment")
+	}
+
+	return &managment.AllocationResponse{}, nil
 }
 
 func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations []*helixClusterMysql.HelixAllocation) map[string]*nodePartitionMapping {
@@ -213,7 +217,7 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 		// Find node with lowest current count that hasn't reached its target
 		var minNodeId string
 		minCount := taskListInfo.PartitionCount + 1 // Start with impossible high value
-		
+
 		for i, nodeId := range activeNodeIds {
 			target := getTargetForNode(i)
 			if nodeActiveCount[nodeId] < target && nodeActiveCount[nodeId] < minCount {
@@ -226,7 +230,7 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 		if minNodeId == "" {
 			minCount = nodeActiveCount[activeNodeIds[0]]
 			minNodeId = activeNodeIds[0]
-			
+
 			for _, nodeId := range activeNodeIds {
 				if nodeActiveCount[nodeId] < minCount {
 					minCount = nodeActiveCount[nodeId]
@@ -248,10 +252,10 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 	for i, nodeId := range activeNodeIds {
 		target := getTargetForNode(i)
 		currentCount := nodeActiveCount[nodeId]
-		
+
 		if currentCount > target {
 			partitionsToMove := make([]*nodePartitionMapping, 0)
-			
+
 			// Select excess partitions to move (from the end of the list for simplicity)
 			nodePartitions := nodeCurrentAllocations[nodeId]
 			if len(nodePartitions) > target {
@@ -259,7 +263,7 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 				nodeCurrentAllocations[nodeId] = nodePartitions[:target]
 				nodeActiveCount[nodeId] = target
 			}
-			
+
 			// Redistribute excess partitions to under-allocated nodes
 			for _, partitionToMove := range partitionsToMove {
 				// Find a node that needs more partitions
@@ -289,4 +293,49 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 
 	// Return the updated mapping with all partitions correctly assigned
 	return nodePartitionMappings
+}
+
+func (d *defaultAlgorithm) updateAssignment(ctx context.Context, taskListInfo managment.TaskListInfo, nodePartitionMappings map[string]*nodePartitionMapping) error {
+
+	allocations := map[string]*managment.Allocation{}
+	for _, v := range nodePartitionMappings {
+		if _, ok := allocations[v.OwnerNode]; !ok {
+			allocations[v.OwnerNode] = &managment.Allocation{
+				Cluster:                  taskListInfo.Cluster,
+				Domain:                   taskListInfo.Domain,
+				TaskList:                 taskListInfo.TaskList,
+				NodeId:                   v.OwnerNode,
+				PartitionAllocationInfos: make([]managment.PartitionAllocationInfo, 0),
+			}
+		}
+		allocations[v.OwnerNode].PartitionAllocationInfos = append(allocations[v.OwnerNode].PartitionAllocationInfos, managment.PartitionAllocationInfo{
+			PartitionId:      v.Partition,
+			AllocationStatus: v.Status,
+			UpdatedTime:      d.Now(),
+		})
+	}
+
+	for nodeId, allocation := range allocations {
+
+		// Generate the payload to store in partition info
+		info, err := goxJsonUtils.ObjectToString(allocation)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("failed to marshal allocation info for node %s", nodeId))
+		}
+
+		// Upsert new allocations
+		err = d.dbInterface.UpsertAllocation(ctx, helixClusterMysql.UpsertAllocationParams{
+			Cluster:       taskListInfo.Cluster,
+			Domain:        taskListInfo.Domain,
+			Tasklist:      taskListInfo.TaskList,
+			NodeID:        nodeId,
+			PartitionInfo: info,
+			Metadata:      sql.NullString{Valid: true, String: "{}"},
+		})
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("failed to upsert allocation for node %s", nodeId))
+		}
+	}
+
+	return nil
 }
