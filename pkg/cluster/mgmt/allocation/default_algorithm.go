@@ -129,9 +129,13 @@ func (d *defaultAlgorithm) markPartitionsAllocatedToInactiveNodes(nodes []*helix
 	}
 
 	// Remove assignments given to inactive nodes
-	for id, _ := range nodePartitionMappings {
-		if _, ok := activeNodes[id]; !ok {
-			delete(nodePartitionMappings, id)
+	for _, partition := range nodePartitionMappings {
+		if partition.OwnerNode != "" {
+			if _, ok := activeNodes[partition.OwnerNode]; !ok {
+				// Mark partition as unassigned if its owner node is inactive
+				partition.Status = managment.PartitionAllocationUnassigned
+				partition.OwnerNode = ""
+			}
 		}
 	}
 }
@@ -299,6 +303,11 @@ func (d *defaultAlgorithm) updateAssignment(ctx context.Context, taskListInfo ma
 
 	allocations := map[string]*managment.Allocation{}
 	for _, v := range nodePartitionMappings {
+		// Skip unassigned partitions - they don't get stored in DB
+		if v.OwnerNode == "" || v.Status == managment.PartitionAllocationUnassigned {
+			continue
+		}
+		
 		if _, ok := allocations[v.OwnerNode]; !ok {
 			allocations[v.OwnerNode] = &managment.Allocation{
 				Cluster:                  taskListInfo.Cluster,
