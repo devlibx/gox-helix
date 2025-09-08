@@ -108,6 +108,184 @@ func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*Ge
 	return items, nil
 }
 
+const getAllocationById = `-- name: GetAllocationById :one
+SELECT id,
+       cluster,
+       domain,
+       tasklist,
+       node_id,
+       status,
+       partition_info,
+       metadata,
+       created_at,
+       updated_at
+FROM helix_allocation
+WHERE id = ?
+  AND status = ?
+`
+
+type GetAllocationByIdParams struct {
+	ID     uint64 `json:"id"`
+	Status int8   `json:"status"`
+}
+
+// GetAllocationById
+//
+//	SELECT id,
+//	       cluster,
+//	       domain,
+//	       tasklist,
+//	       node_id,
+//	       status,
+//	       partition_info,
+//	       metadata,
+//	       created_at,
+//	       updated_at
+//	FROM helix_allocation
+//	WHERE id = ?
+//	  AND status = ?
+func (q *Queries) GetAllocationById(ctx context.Context, arg GetAllocationByIdParams) (*HelixAllocation, error) {
+	row := q.queryRow(ctx, q.getAllocationByIdStmt, getAllocationById, arg.ID, arg.Status)
+	var i HelixAllocation
+	err := row.Scan(
+		&i.ID,
+		&i.Cluster,
+		&i.Domain,
+		&i.Tasklist,
+		&i.NodeID,
+		&i.Status,
+		&i.PartitionInfo,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
+const getAllocationByNodeId = `-- name: GetAllocationByNodeId :one
+SELECT id,
+       cluster,
+       domain,
+       tasklist,
+       node_id,
+       status,
+       partition_info,
+       metadata,
+       created_at,
+       updated_at
+FROM helix_allocation
+WHERE node_id = ?
+  AND status = 1
+`
+
+// GetAllocationByNodeId
+//
+//	SELECT id,
+//	       cluster,
+//	       domain,
+//	       tasklist,
+//	       node_id,
+//	       status,
+//	       partition_info,
+//	       metadata,
+//	       created_at,
+//	       updated_at
+//	FROM helix_allocation
+//	WHERE node_id = ?
+//	  AND status = 1
+func (q *Queries) GetAllocationByNodeId(ctx context.Context, nodeID string) (*HelixAllocation, error) {
+	row := q.queryRow(ctx, q.getAllocationByNodeIdStmt, getAllocationByNodeId, nodeID)
+	var i HelixAllocation
+	err := row.Scan(
+		&i.ID,
+		&i.Cluster,
+		&i.Domain,
+		&i.Tasklist,
+		&i.NodeID,
+		&i.Status,
+		&i.PartitionInfo,
+		&i.Metadata,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
+const getAllocationsForTasklist = `-- name: GetAllocationsForTasklist :many
+SELECT id,
+       cluster,
+       domain,
+       tasklist,
+       node_id,
+       status,
+       partition_info,
+       metadata,
+       created_at,
+       updated_at
+FROM helix_allocation
+WHERE cluster = ?
+  AND domain = ?
+  AND tasklist = ?
+  AND status = 1
+`
+
+type GetAllocationsForTasklistParams struct {
+	Cluster  string `json:"cluster"`
+	Domain   string `json:"domain"`
+	Tasklist string `json:"tasklist"`
+}
+
+// GetAllocationsForTasklist
+//
+//	SELECT id,
+//	       cluster,
+//	       domain,
+//	       tasklist,
+//	       node_id,
+//	       status,
+//	       partition_info,
+//	       metadata,
+//	       created_at,
+//	       updated_at
+//	FROM helix_allocation
+//	WHERE cluster = ?
+//	  AND domain = ?
+//	  AND tasklist = ?
+//	  AND status = 1
+func (q *Queries) GetAllocationsForTasklist(ctx context.Context, arg GetAllocationsForTasklistParams) ([]*HelixAllocation, error) {
+	rows, err := q.query(ctx, q.getAllocationsForTasklistStmt, getAllocationsForTasklist, arg.Cluster, arg.Domain, arg.Tasklist)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*HelixAllocation{}
+	for rows.Next() {
+		var i HelixAllocation
+		if err := rows.Scan(
+			&i.ID,
+			&i.Cluster,
+			&i.Domain,
+			&i.Tasklist,
+			&i.NodeID,
+			&i.Status,
+			&i.PartitionInfo,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCluster = `-- name: GetCluster :one
 SELECT cluster,
        domain,
@@ -313,14 +491,49 @@ func (q *Queries) MarkInactiveNodes(ctx context.Context, arg MarkInactiveNodesPa
 	return err
 }
 
+const markNodeDeletable = `-- name: MarkNodeDeletable :exec
+UPDATE helix_allocation
+SET status = 2
+WHERE node_id = ?
+  AND status = 0
+`
+
+// MarkNodeDeletable
+//
+//	UPDATE helix_allocation
+//	SET status = 2
+//	WHERE node_id = ?
+//	  AND status = 0
+func (q *Queries) MarkNodeDeletable(ctx context.Context, nodeID string) error {
+	_, err := q.exec(ctx, q.markNodeDeletableStmt, markNodeDeletable, nodeID)
+	return err
+}
+
+const markNodeInactive = `-- name: MarkNodeInactive :exec
+UPDATE helix_allocation
+SET status = 0
+WHERE node_id = ?
+  AND status = 1
+`
+
+// MarkNodeInactive
+//
+//	UPDATE helix_allocation
+//	SET status = 0
+//	WHERE node_id = ?
+//	  AND status = 1
+func (q *Queries) MarkNodeInactive(ctx context.Context, nodeID string) error {
+	_, err := q.exec(ctx, q.markNodeInactiveStmt, markNodeInactive, nodeID)
+	return err
+}
+
 const updateHeartbeat = `-- name: UpdateHeartbeat :execresult
 UPDATE helix_nodes
 SET last_hb_time = ?,
-    status       = 1,
     version      = version + 1
 WHERE cluster_name = ?
   AND node_uuid = ?
-  AND (status = 1)
+  AND status = 1
 `
 
 type UpdateHeartbeatParams struct {
@@ -333,13 +546,48 @@ type UpdateHeartbeatParams struct {
 //
 //	UPDATE helix_nodes
 //	SET last_hb_time = ?,
-//	    status       = 1,
 //	    version      = version + 1
 //	WHERE cluster_name = ?
 //	  AND node_uuid = ?
-//	  AND (status = 1)
+//	  AND status = 1
 func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) (sql.Result, error) {
 	return q.exec(ctx, q.updateHeartbeatStmt, updateHeartbeat, arg.LastHbTime, arg.ClusterName, arg.NodeUuid)
+}
+
+const upsertAllocation = `-- name: UpsertAllocation :exec
+INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+VALUES (?, ?, ?, ?, ?, ?, 1)
+ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
+                        metadata       = VALUES(metadata),
+                        status         = 1
+`
+
+type UpsertAllocationParams struct {
+	Cluster       string         `json:"cluster"`
+	Domain        string         `json:"domain"`
+	Tasklist      string         `json:"tasklist"`
+	NodeID        string         `json:"node_id"`
+	PartitionInfo string         `json:"partition_info"`
+	Metadata      sql.NullString `json:"metadata"`
+}
+
+// UpsertAllocation
+//
+//	INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+//	VALUES (?, ?, ?, ?, ?, ?, 1)
+//	ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
+//	                        metadata       = VALUES(metadata),
+//	                        status         = 1
+func (q *Queries) UpsertAllocation(ctx context.Context, arg UpsertAllocationParams) error {
+	_, err := q.exec(ctx, q.upsertAllocationStmt, upsertAllocation,
+		arg.Cluster,
+		arg.Domain,
+		arg.Tasklist,
+		arg.NodeID,
+		arg.PartitionInfo,
+		arg.Metadata,
+	)
+	return err
 }
 
 const upsertCluster = `-- name: UpsertCluster :exec

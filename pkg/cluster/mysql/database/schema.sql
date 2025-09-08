@@ -37,3 +37,24 @@ CREATE TABLE helix_cluster
     PARTITION p_inactive VALUES IN (0),
     PARTITION p_deletable VALUES IN (2)
     );
+
+
+CREATE TABLE helix_allocation
+(
+    id             bigint unsigned NOT NULL AUTO_INCREMENT,
+    cluster        VARCHAR(64)    NOT NULL,
+    domain         VARCHAR(64)    NOT NULL,
+    tasklist       VARCHAR(128)    NOT NULL,
+    node_id        VARCHAR(128)    NOT NULL,
+    status         TINYINT         NOT NULL DEFAULT 1,
+    partition_info TEXT            NOT NULL,
+    metadata       TEXT            NULL,
+    `created_at`   datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`   datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`, `status`),
+    UNIQUE KEY `c_d_t_node_status_unique` (`cluster`, `domain`, `tasklist`, `node_id`, `status`)
+) PARTITION BY LIST (`status`) (
+    PARTITION p_active VALUES IN (1),
+    PARTITION p_inactive VALUES IN (0),
+    PARTITION p_deletable VALUES IN (2)
+    );

@@ -85,3 +85,69 @@ WHERE cluster = ?
   AND domain = ?
   AND tasklist = ?
   AND status = 1;
+
+-- name: UpsertAllocation :exec
+INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+VALUES (?, ?, ?, ?, ?, ?, 1)
+ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
+                        metadata       = VALUES(metadata),
+                        status         = 1;
+
+-- name: GetAllocationByNodeId :one
+SELECT id,
+       cluster,
+       domain,
+       tasklist,
+       node_id,
+       status,
+       partition_info,
+       metadata,
+       created_at,
+       updated_at
+FROM helix_allocation
+WHERE node_id = ?
+  AND status = 1;
+
+-- name: GetAllocationsForTasklist :many
+SELECT id,
+       cluster,
+       domain,
+       tasklist,
+       node_id,
+       status,
+       partition_info,
+       metadata,
+       created_at,
+       updated_at
+FROM helix_allocation
+WHERE cluster = ?
+  AND domain = ?
+  AND tasklist = ?
+  AND status = 1;
+
+-- name: MarkNodeInactive :exec
+UPDATE helix_allocation
+SET status = 0
+WHERE node_id = ?
+  AND status = 1;
+
+-- name: MarkNodeDeletable :exec
+UPDATE helix_allocation
+SET status = 2
+WHERE node_id = ?
+  AND status = 0;
+
+-- name: GetAllocationById :one
+SELECT id,
+       cluster,
+       domain,
+       tasklist,
+       node_id,
+       status,
+       partition_info,
+       metadata,
+       created_at,
+       updated_at
+FROM helix_allocation
+WHERE id = ?
+  AND status = ?;

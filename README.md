@@ -51,6 +51,10 @@ We are actively developing the core framework, focusing on robust distributed co
     *   **Distributed Controller Election:** Integrated the distributed locking mechanism to ensure only a single cluster manager instance is responsible for critical cluster-wide operations like marking inactive nodes.
     *   **Automatic Node Re-registration:** Implemented a mechanism to automatically re-register nodes if their heartbeat fails, ensuring high availability.
 
+3.  **Partition Allocation:**
+    *   **`helix_allocation` Table:** A new table to store partition allocation information for each node in the cluster.
+    *   **Default Allocation Algorithm:** Implemented a default algorithm for partition allocation, which is responsible for distributing partitions among the active nodes in the cluster.
+
 ## Next Steps
 
 To continue, we need to:

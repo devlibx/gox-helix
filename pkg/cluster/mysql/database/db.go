@@ -30,6 +30,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getActiveNodesStmt, err = db.PrepareContext(ctx, getActiveNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetActiveNodes: %w", err)
 	}
+	if q.getAllocationByIdStmt, err = db.PrepareContext(ctx, getAllocationById); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllocationById: %w", err)
+	}
+	if q.getAllocationByNodeIdStmt, err = db.PrepareContext(ctx, getAllocationByNodeId); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllocationByNodeId: %w", err)
+	}
+	if q.getAllocationsForTasklistStmt, err = db.PrepareContext(ctx, getAllocationsForTasklist); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllocationsForTasklist: %w", err)
+	}
 	if q.getClusterStmt, err = db.PrepareContext(ctx, getCluster); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCluster: %w", err)
 	}
@@ -42,8 +51,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.markInactiveNodesStmt, err = db.PrepareContext(ctx, markInactiveNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkInactiveNodes: %w", err)
 	}
+	if q.markNodeDeletableStmt, err = db.PrepareContext(ctx, markNodeDeletable); err != nil {
+		return nil, fmt.Errorf("error preparing query MarkNodeDeletable: %w", err)
+	}
+	if q.markNodeInactiveStmt, err = db.PrepareContext(ctx, markNodeInactive); err != nil {
+		return nil, fmt.Errorf("error preparing query MarkNodeInactive: %w", err)
+	}
 	if q.updateHeartbeatStmt, err = db.PrepareContext(ctx, updateHeartbeat); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateHeartbeat: %w", err)
+	}
+	if q.upsertAllocationStmt, err = db.PrepareContext(ctx, upsertAllocation); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertAllocation: %w", err)
 	}
 	if q.upsertClusterStmt, err = db.PrepareContext(ctx, upsertCluster); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertCluster: %w", err)
@@ -66,6 +84,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getActiveNodesStmt: %w", cerr)
 		}
 	}
+	if q.getAllocationByIdStmt != nil {
+		if cerr := q.getAllocationByIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllocationByIdStmt: %w", cerr)
+		}
+	}
+	if q.getAllocationByNodeIdStmt != nil {
+		if cerr := q.getAllocationByNodeIdStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllocationByNodeIdStmt: %w", cerr)
+		}
+	}
+	if q.getAllocationsForTasklistStmt != nil {
+		if cerr := q.getAllocationsForTasklistStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllocationsForTasklistStmt: %w", cerr)
+		}
+	}
 	if q.getClusterStmt != nil {
 		if cerr := q.getClusterStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getClusterStmt: %w", cerr)
@@ -86,9 +119,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing markInactiveNodesStmt: %w", cerr)
 		}
 	}
+	if q.markNodeDeletableStmt != nil {
+		if cerr := q.markNodeDeletableStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing markNodeDeletableStmt: %w", cerr)
+		}
+	}
+	if q.markNodeInactiveStmt != nil {
+		if cerr := q.markNodeInactiveStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing markNodeInactiveStmt: %w", cerr)
+		}
+	}
 	if q.updateHeartbeatStmt != nil {
 		if cerr := q.updateHeartbeatStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateHeartbeatStmt: %w", cerr)
+		}
+	}
+	if q.upsertAllocationStmt != nil {
+		if cerr := q.upsertAllocationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertAllocationStmt: %w", cerr)
 		}
 	}
 	if q.upsertClusterStmt != nil {
@@ -138,31 +186,43 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                      DBTX
-	tx                      *sql.Tx
-	deregisterNodeStmt      *sql.Stmt
-	getActiveNodesStmt      *sql.Stmt
-	getClusterStmt          *sql.Stmt
-	getClustersByDomainStmt *sql.Stmt
-	getNodeByIdStmt         *sql.Stmt
-	markInactiveNodesStmt   *sql.Stmt
-	updateHeartbeatStmt     *sql.Stmt
-	upsertClusterStmt       *sql.Stmt
-	upsertNodeStmt          *sql.Stmt
+	db                            DBTX
+	tx                            *sql.Tx
+	deregisterNodeStmt            *sql.Stmt
+	getActiveNodesStmt            *sql.Stmt
+	getAllocationByIdStmt         *sql.Stmt
+	getAllocationByNodeIdStmt     *sql.Stmt
+	getAllocationsForTasklistStmt *sql.Stmt
+	getClusterStmt                *sql.Stmt
+	getClustersByDomainStmt       *sql.Stmt
+	getNodeByIdStmt               *sql.Stmt
+	markInactiveNodesStmt         *sql.Stmt
+	markNodeDeletableStmt         *sql.Stmt
+	markNodeInactiveStmt          *sql.Stmt
+	updateHeartbeatStmt           *sql.Stmt
+	upsertAllocationStmt          *sql.Stmt
+	upsertClusterStmt             *sql.Stmt
+	upsertNodeStmt                *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                      tx,
-		tx:                      tx,
-		deregisterNodeStmt:      q.deregisterNodeStmt,
-		getActiveNodesStmt:      q.getActiveNodesStmt,
-		getClusterStmt:          q.getClusterStmt,
-		getClustersByDomainStmt: q.getClustersByDomainStmt,
-		getNodeByIdStmt:         q.getNodeByIdStmt,
-		markInactiveNodesStmt:   q.markInactiveNodesStmt,
-		updateHeartbeatStmt:     q.updateHeartbeatStmt,
-		upsertClusterStmt:       q.upsertClusterStmt,
-		upsertNodeStmt:          q.upsertNodeStmt,
+		db:                            tx,
+		tx:                            tx,
+		deregisterNodeStmt:            q.deregisterNodeStmt,
+		getActiveNodesStmt:            q.getActiveNodesStmt,
+		getAllocationByIdStmt:         q.getAllocationByIdStmt,
+		getAllocationByNodeIdStmt:     q.getAllocationByNodeIdStmt,
+		getAllocationsForTasklistStmt: q.getAllocationsForTasklistStmt,
+		getClusterStmt:                q.getClusterStmt,
+		getClustersByDomainStmt:       q.getClustersByDomainStmt,
+		getNodeByIdStmt:               q.getNodeByIdStmt,
+		markInactiveNodesStmt:         q.markInactiveNodesStmt,
+		markNodeDeletableStmt:         q.markNodeDeletableStmt,
+		markNodeInactiveStmt:          q.markNodeInactiveStmt,
+		updateHeartbeatStmt:           q.updateHeartbeatStmt,
+		upsertAllocationStmt:          q.upsertAllocationStmt,
+		upsertClusterStmt:             q.upsertClusterStmt,
+		upsertNodeStmt:                q.upsertNodeStmt,
 	}
 }

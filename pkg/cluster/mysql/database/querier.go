@@ -33,6 +33,56 @@ type Querier interface {
 	//  WHERE cluster_name = ?
 	//    AND status = 1
 	GetActiveNodes(ctx context.Context, clusterName string) ([]*GetActiveNodesRow, error)
+	//GetAllocationById
+	//
+	//  SELECT id,
+	//         cluster,
+	//         domain,
+	//         tasklist,
+	//         node_id,
+	//         status,
+	//         partition_info,
+	//         metadata,
+	//         created_at,
+	//         updated_at
+	//  FROM helix_allocation
+	//  WHERE id = ?
+	//    AND status = ?
+	GetAllocationById(ctx context.Context, arg GetAllocationByIdParams) (*HelixAllocation, error)
+	//GetAllocationByNodeId
+	//
+	//  SELECT id,
+	//         cluster,
+	//         domain,
+	//         tasklist,
+	//         node_id,
+	//         status,
+	//         partition_info,
+	//         metadata,
+	//         created_at,
+	//         updated_at
+	//  FROM helix_allocation
+	//  WHERE node_id = ?
+	//    AND status = 1
+	GetAllocationByNodeId(ctx context.Context, nodeID string) (*HelixAllocation, error)
+	//GetAllocationsForTasklist
+	//
+	//  SELECT id,
+	//         cluster,
+	//         domain,
+	//         tasklist,
+	//         node_id,
+	//         status,
+	//         partition_info,
+	//         metadata,
+	//         created_at,
+	//         updated_at
+	//  FROM helix_allocation
+	//  WHERE cluster = ?
+	//    AND domain = ?
+	//    AND tasklist = ?
+	//    AND status = 1
+	GetAllocationsForTasklist(ctx context.Context, arg GetAllocationsForTasklistParams) ([]*HelixAllocation, error)
 	//GetCluster
 	//
 	//  SELECT cluster,
@@ -81,16 +131,37 @@ type Querier interface {
 	//    AND status = 1
 	//    AND last_hb_time < ?
 	MarkInactiveNodes(ctx context.Context, arg MarkInactiveNodesParams) error
+	//MarkNodeDeletable
+	//
+	//  UPDATE helix_allocation
+	//  SET status = 2
+	//  WHERE node_id = ?
+	//    AND status = 0
+	MarkNodeDeletable(ctx context.Context, nodeID string) error
+	//MarkNodeInactive
+	//
+	//  UPDATE helix_allocation
+	//  SET status = 0
+	//  WHERE node_id = ?
+	//    AND status = 1
+	MarkNodeInactive(ctx context.Context, nodeID string) error
 	//UpdateHeartbeat
 	//
 	//  UPDATE helix_nodes
 	//  SET last_hb_time = ?,
-	//      status       = 1,
 	//      version      = version + 1
 	//  WHERE cluster_name = ?
 	//    AND node_uuid = ?
-	//    AND (status = 1)
+	//    AND status = 1
 	UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) (sql.Result, error)
+	//UpsertAllocation
+	//
+	//  INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+	//  VALUES (?, ?, ?, ?, ?, ?, 1)
+	//  ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
+	//                          metadata       = VALUES(metadata),
+	//                          status         = 1
+	UpsertAllocation(ctx context.Context, arg UpsertAllocationParams) error
 	//UpsertCluster
 	//
 	//  INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
