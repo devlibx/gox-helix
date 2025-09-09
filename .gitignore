@@ -2,3 +2,4 @@
 .env
 /examples/soak_test/test_1/soak-test
 todo.local.md
+.claude
