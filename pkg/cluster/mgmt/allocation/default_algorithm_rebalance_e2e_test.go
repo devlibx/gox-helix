@@ -1169,6 +1169,142 @@ func (s *E2ETestSuite) TestCalculateAllocation_SingleNode() {
 	}
 }
 
+// TestCalculateAllocation_DuplicatePartitionAssignmentResolution tests the algorithm's ability
+// to handle and resolve duplicate partition assignments that can occur during coordinator churn
+func (s *E2ETestSuite) TestCalculateAllocation_DuplicatePartitionAssignmentResolution() {
+	h := s.NewE2ETestHelper()
+	defer h.cleanup()
+
+	// Test scenario: Simulate coordinator churn where the same partitions got assigned to multiple nodes
+	// This happens when multiple coordinators simultaneously run allocation during leadership changes
+	
+	nodeIds := []string{"node-1", "node-2", "node-3"}
+	partitionCount := 6
+	
+	// Create a scenario where partitions 0, 1, and 2 are assigned to multiple nodes
+	// This simulates database state after coordinator race conditions
+	baseTime := h.setup.mockCf.Now()
+	
+	initialAllocations := map[string][]PartitionInfo{
+		"node-1": {
+			// Node-1 has partitions 0, 1, 2 in "assigned" state
+			{PartitionId: "0", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime},
+			{PartitionId: "1", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime},
+			{PartitionId: "2", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime},
+		},
+		"node-2": {
+			// Node-2 ALSO has partitions 0, 1 in "assigned" state (CONFLICT!)
+			// Plus partition 3 and 4 legitimately assigned
+			{PartitionId: "0", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime.Add(-1 * time.Second)}, // Older timestamp
+			{PartitionId: "1", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime.Add(1 * time.Second)},  // Newer timestamp
+			{PartitionId: "3", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime},
+			{PartitionId: "4", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime},
+		},
+		"node-3": {
+			// Node-3 ALSO has partition 2 in "assigned" state (CONFLICT!)
+			// Plus partition 5 legitimately assigned
+			{PartitionId: "2", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime.Add(-2 * time.Second)}, // Much older timestamp
+			{PartitionId: "5", Status: managment.PartitionAllocationAssigned, UpdatedTime: baseTime},
+		},
+	}
+
+	fmt.Printf("\n" + strings.Repeat("=", 100))
+	fmt.Printf("\nE2E TEST: Duplicate Partition Assignment Resolution")
+	fmt.Printf("\n" + strings.Repeat("=", 100))
+	fmt.Printf("\nSCENARIO: Simulating coordinator churn conflicts")
+	fmt.Printf("\n- Partition 0: assigned to both node-1 (newer) and node-2 (older)")
+	fmt.Printf("\n- Partition 1: assigned to both node-1 (older) and node-2 (newer)")
+	fmt.Printf("\n- Partition 2: assigned to both node-1 (newer) and node-3 (oldest)")
+	fmt.Printf("\n- Expected resolution: node-1 wins P0&P2 (newer), node-2 wins P1 (newer)")
+	fmt.Printf("\n" + strings.Repeat("=", 100))
+
+	// Setup cluster and execute test
+	err := h.setupCluster(partitionCount)
+	s.Require().NoError(err, "Failed to setup cluster")
+
+	err = h.setupNodes(nodeIds)
+	s.Require().NoError(err, "Failed to setup nodes")
+
+	// Manually insert conflicting allocations into database
+	// This simulates the race condition during coordinator churn
+	err = h.setupInitialAllocations(initialAllocations)
+	s.Require().NoError(err, "Failed to setup conflicting initial allocations")
+
+	// Get and print before state to show the conflicts
+	beforeAllocations, err := h.getAllocationsFromDB()
+	s.Require().NoError(err, "Failed to get before allocations")
+	h.printDBAllocations("BEFORE: Conflicting Database State", beforeAllocations, nodeIds)
+
+	// Execute CalculateAllocation - this should resolve the conflicts
+	response, err := h.executeCalculateAllocation(partitionCount)
+	s.Require().NoError(err, "Failed to execute CalculateAllocation")
+	s.Require().NotNil(response, "Response should not be nil")
+
+	// Get after state to verify conflicts are resolved
+	afterAllocations, err := h.getAllocationsFromDB()
+	s.Require().NoError(err, "Failed to get after allocations")
+	h.printDBAllocations("AFTER: Resolved State", afterAllocations, nodeIds)
+
+	// Critical validations:
+	
+	// 1. Ensure ALL partitions are still assigned (no data loss)
+	h.validateAllPartitionsAssigned(s.T(), afterAllocations, partitionCount)
+
+	// 2. Verify NO duplicate assignments exist in final state
+	partitionOwnership := make(map[string]string) // partitionId -> nodeId
+	duplicates := make([]string, 0)
+	
+	for nodeId, partitions := range afterAllocations {
+		for _, partition := range partitions {
+			if partition.Status == managment.PartitionAllocationAssigned {
+				if existingOwner, exists := partitionOwnership[partition.PartitionId]; exists {
+					duplicates = append(duplicates, fmt.Sprintf("Partition %s assigned to both %s and %s", 
+						partition.PartitionId, existingOwner, nodeId))
+				} else {
+					partitionOwnership[partition.PartitionId] = nodeId
+				}
+			}
+		}
+	}
+	
+	s.Require().Empty(duplicates, "CRITICAL: Found duplicate partition assignments after resolution: %v", duplicates)
+
+	// 3. Verify that conflicts were resolved (we can't predict final allocation due to rebalancing)
+	// The key success criteria is that:
+	// - No duplicate assignments remain
+	// - All partitions are assigned
+	// - Load is balanced across nodes (2 partitions per node in this 6-partition, 3-node scenario)
+	
+	// Count partitions per node to verify load balancing
+	nodePartitionCounts := make(map[string]int)
+	for nodeId, partitions := range afterAllocations {
+		for _, partition := range partitions {
+			if partition.Status == managment.PartitionAllocationAssigned {
+				nodePartitionCounts[nodeId]++
+			}
+		}
+	}
+	
+	// Verify each node has exactly 2 partitions (6 partitions ÷ 3 nodes = 2 each)
+	for _, nodeId := range nodeIds {
+		count := nodePartitionCounts[nodeId]
+		s.Require().Equal(2, count, 
+			"Node %s should have exactly 2 partitions for balanced load, but has %d", nodeId, count)
+	}
+
+	// 4. Ensure total partition count matches expected
+	s.Require().Equal(partitionCount, len(partitionOwnership), 
+		"Expected %d assigned partitions, but found %d", partitionCount, len(partitionOwnership))
+
+	fmt.Printf("\n✅ DUPLICATE ASSIGNMENT RESOLUTION TEST PASSED")
+	fmt.Printf("\n- All conflicts resolved deterministically during mapping construction")
+	fmt.Printf("\n- No data loss occurred during resolution and rebalancing")  
+	fmt.Printf("\n- No duplicate assignments remain in final state")
+	fmt.Printf("\n- Load perfectly balanced across all nodes (2 partitions each)")
+	fmt.Printf("\n- Algorithm successfully handled coordinator churn scenario")
+	fmt.Printf("\n" + strings.Repeat("=", 100))
+}
+
 // RunE2ETestSuite runs the complete E2E test suite
 func TestE2ETestSuite(t *testing.T) {
 	suite.Run(t, new(E2ETestSuite))

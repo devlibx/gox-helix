@@ -88,6 +88,8 @@ func (d *defaultAlgorithm) CalculateAllocation(ctx context.Context, taskListInfo
 
 func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations []*helixClusterMysql.HelixAllocation) map[string]*nodePartitionMapping {
 	nodePartitionMappings := map[string]*nodePartitionMapping{}
+	duplicateAssignments := make([]string, 0) // Track partitions with conflicts
+	
 	for _, allocation := range allocations {
 		infos, err := goxJsonUtils.BytesToObject[dbPartitionAllocationInfos]([]byte(allocation.PartitionInfo))
 		if err == nil {
@@ -98,10 +100,64 @@ func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations
 					Status:      info.AllocationStatus,
 					UpdatedTime: info.UpdatedTime,
 				}
-				nodePartitionMappings[info.PartitionId] = m
+				
+				// Check for duplicate partition assignment
+				if existing, exists := nodePartitionMappings[info.PartitionId]; exists {
+					// Duplicate found! Choose winner based on deterministic rules
+					var winner, loser *nodePartitionMapping
+					
+					// Rule 1: Prefer "assigned" status over others
+					if existing.Status == managment.PartitionAllocationAssigned && m.Status != managment.PartitionAllocationAssigned {
+						winner, loser = existing, m
+					} else if m.Status == managment.PartitionAllocationAssigned && existing.Status != managment.PartitionAllocationAssigned {
+						winner, loser = m, existing
+					} else {
+						// Rule 2: If same status, prefer more recent timestamp
+						if m.UpdatedTime.After(existing.UpdatedTime) {
+							winner, loser = m, existing
+						} else if existing.UpdatedTime.After(m.UpdatedTime) {
+							winner, loser = existing, m
+						} else {
+							// Rule 3: If same timestamp, prefer lexicographically smaller node ID for consistency
+							if existing.OwnerNode < m.OwnerNode {
+								winner, loser = existing, m
+							} else {
+								winner, loser = m, existing
+							}
+						}
+					}
+					
+					// Keep winner, mark loser for cleanup (we can't directly modify DB here)
+					nodePartitionMappings[info.PartitionId] = winner
+					
+					// Safe string truncation for logging
+					winnerNodeShort := winner.OwnerNode
+					if len(winnerNodeShort) > 8 {
+						winnerNodeShort = winnerNodeShort[:8]
+					}
+					loserNodeShort := loser.OwnerNode
+					if len(loserNodeShort) > 8 {
+						loserNodeShort = loserNodeShort[:8]
+					}
+					
+					duplicateAssignments = append(duplicateAssignments, 
+						fmt.Sprintf("partition %s: kept node %s, conflicted with node %s", 
+							info.PartitionId, winnerNodeShort, loserNodeShort))
+				} else {
+					nodePartitionMappings[info.PartitionId] = m
+				}
 			}
 		}
 	}
+	
+	// Log duplicate assignments for debugging
+	if len(duplicateAssignments) > 0 {
+		fmt.Printf("⚠️  Resolved %d duplicate partition assignments:\n", len(duplicateAssignments))
+		for _, dup := range duplicateAssignments {
+			fmt.Printf("   - %s\n", dup)
+		}
+	}
+	
 	return nodePartitionMappings
 }
 

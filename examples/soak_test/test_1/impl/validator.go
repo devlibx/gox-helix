@@ -190,6 +190,13 @@ func (v *Validator) validateTasklist(ctx context.Context, cluster, domain, taskl
 	for _, allocation := range allocations {
 		nodeId := allocation.NodeID
 		
+		// Validate that allocation is from the expected cluster
+		if !strings.Contains(allocation.PartitionInfo, fmt.Sprintf(`"cluster":"%s"`, cluster)) {
+			result.InvalidAssignmentDetails = append(result.InvalidAssignmentDetails,
+				fmt.Sprintf("Cross-cluster data contamination: allocation for node %s contains wrong cluster data", nodeId[:8]))
+			continue
+		}
+		
 		// Check if assigned node is active
 		if !activeNodeIds[nodeId] {
 			result.InvalidAssignmentDetails = append(result.InvalidAssignmentDetails,

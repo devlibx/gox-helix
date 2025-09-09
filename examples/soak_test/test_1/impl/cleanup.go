@@ -340,8 +340,9 @@ func (cm *CleanupManager) cleanupOldLocks(ctx context.Context, cutoffTime time.T
 func (cm *CleanupManager) PerformPreTestCleanup(ctx context.Context) error {
 	fmt.Printf("🧹 Performing pre-test cleanup...\n")
 	
-	// Clean up data older than 24 hours to avoid interfering with concurrent tests
-	if err := cm.CleanupOldTestData(ctx, 24*time.Hour); err != nil {
+	// Clean up data older than 5 minutes to prevent cross-cluster contamination
+	// Soak tests run frequently, so we need aggressive cleanup
+	if err := cm.CleanupOldTestData(ctx, 5*time.Minute); err != nil {
 		return fmt.Errorf("pre-test cleanup failed: %w", err)
 	}
 	
