@@ -153,7 +153,7 @@ func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations
 
 	// Log duplicate assignments for debugging
 	if len(duplicateAssignments) > 0 {
-		slog.Debug("⚠️  Resolved %d duplicate partition assignments:\n", len(duplicateAssignments))
+		slog.Debug("⚠️  Resolved duplicate partition assignments", "count", len(duplicateAssignments))
 		for _, dup := range duplicateAssignments {
 			fmt.Printf("   - %s\n", dup)
 		}

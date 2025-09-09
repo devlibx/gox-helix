@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 	managment "github.com/devlibx/gox-helix/pkg/cluster/mgmt"
+	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 )
 
 // TasklistDataObject contains all data for a single tasklist's partition allocation
@@ -20,8 +20,8 @@ type TasklistDataObject struct {
 	TotalPartitions      int
 	AssignedPartitions   int
 	UnassignedPartitions int
-	RequestedPartitions  int  // partitions marked for release request
-	PendingPartitions    int  // partitions marked for pending release
+	RequestedPartitions  int // partitions marked for release request
+	PendingPartitions    int // partitions marked for pending release
 	AssignmentPercentage float64
 	AssignedNodes        []string // list of node IDs that have assignments
 	LastUpdated          time.Time
@@ -64,26 +64,26 @@ func NewConsoleTasklistReporter() TasklistReporter {
 // ReportTasklist generates a human-readable report for a single tasklist
 func (r *ConsoleTasklistReporter) ReportTasklist(data TasklistDataObject) string {
 	var builder strings.Builder
-	
+
 	statusIcon := "🔴" // Red for incomplete
 	if data.UnassignedPartitions == 0 {
 		statusIcon = "🟢" // Green for complete
 	} else if data.AssignmentPercentage >= 80 {
 		statusIcon = "🟡" // Yellow for mostly complete
 	}
-	
+
 	builder.WriteString(fmt.Sprintf("%s Tasklist: %s/%s\n", statusIcon, data.Domain, data.Tasklist))
 	builder.WriteString(fmt.Sprintf("   Total Partitions: %d\n", data.TotalPartitions))
 	builder.WriteString(fmt.Sprintf("      ✅ Assigned: %d (%.1f%%)\n", data.AssignedPartitions, data.AssignmentPercentage))
 	builder.WriteString(fmt.Sprintf("      ❌ Unassigned: %d\n", data.UnassignedPartitions))
-	
+
 	if data.RequestedPartitions > 0 {
 		builder.WriteString(fmt.Sprintf("      🔄 Requested Release: %d\n", data.RequestedPartitions))
 	}
 	if data.PendingPartitions > 0 {
 		builder.WriteString(fmt.Sprintf("      ⏳ Pending Release: %d\n", data.PendingPartitions))
 	}
-	
+
 	nodeList := "none"
 	if len(data.AssignedNodes) > 0 {
 		if len(data.AssignedNodes) <= 3 {
@@ -93,7 +93,7 @@ func (r *ConsoleTasklistReporter) ReportTasklist(data TasklistDataObject) string
 		}
 	}
 	builder.WriteString(fmt.Sprintf("      🖥️  Assigned Nodes: %s\n", nodeList))
-	
+
 	return builder.String()
 }
 
@@ -108,36 +108,36 @@ func NewConsoleClusterReporter() ClusterReporter {
 // ReportCluster generates a human-readable report for a single cluster
 func (r *ConsoleClusterReporter) ReportCluster(data ClusterDataObject) string {
 	var builder strings.Builder
-	
+
 	statusIcon := "🔴" // Red for incomplete
 	if data.UnassignedPartitions == 0 {
 		statusIcon = "🟢" // Green for complete
 	} else if data.AssignmentPercentage >= 80 {
 		statusIcon = "🟡" // Yellow for mostly complete
 	}
-	
+
 	builder.WriteString(fmt.Sprintf("%s Cluster: %s\n", statusIcon, data.ClusterName))
 	builder.WriteString(fmt.Sprintf("   📋 Tasklists: %d\n", data.TotalTasklists))
 	builder.WriteString(fmt.Sprintf("   🧩 Total Partitions: %d\n", data.TotalPartitions))
 	builder.WriteString(fmt.Sprintf("      ✅ Assigned: %d (%.1f%%)\n", data.AssignedPartitions, data.AssignmentPercentage))
 	builder.WriteString(fmt.Sprintf("      ❌ Unassigned: %d\n", data.UnassignedPartitions))
-	
+
 	if data.RequestedPartitions > 0 {
 		builder.WriteString(fmt.Sprintf("      🔄 Requested Release: %d\n", data.RequestedPartitions))
 	}
 	if data.PendingPartitions > 0 {
 		builder.WriteString(fmt.Sprintf("      ⏳ Pending Release: %d\n", data.PendingPartitions))
 	}
-	
+
 	builder.WriteString(fmt.Sprintf("   🖥️  Active Nodes: %d\n", data.ActiveNodes))
-	
+
 	return builder.String()
 }
 
 // ReportSummary generates a unified summary report across multiple clusters
 func (r *ConsoleClusterReporter) ReportSummary(clusters []ClusterDataObject) string {
 	var builder strings.Builder
-	
+
 	// Calculate totals
 	totalClusters := len(clusters)
 	grandTotalTasklists := 0
@@ -147,7 +147,7 @@ func (r *ConsoleClusterReporter) ReportSummary(clusters []ClusterDataObject) str
 	grandTotalRequested := 0
 	grandTotalPending := 0
 	grandTotalNodes := 0
-	
+
 	for _, cluster := range clusters {
 		grandTotalTasklists += cluster.TotalTasklists
 		grandTotalPartitions += cluster.TotalPartitions
@@ -157,39 +157,39 @@ func (r *ConsoleClusterReporter) ReportSummary(clusters []ClusterDataObject) str
 		grandTotalPending += cluster.PendingPartitions
 		grandTotalNodes += cluster.ActiveNodes
 	}
-	
+
 	overallPercent := 0.0
 	if grandTotalPartitions > 0 {
 		overallPercent = float64(grandTotalAssigned) / float64(grandTotalPartitions) * 100
 	}
-	
+
 	statusIcon := "🔴"
 	if grandTotalUnassigned == 0 {
 		statusIcon = "🟢"
 	} else if overallPercent >= 80 {
 		statusIcon = "🟡"
 	}
-	
+
 	builder.WriteString(fmt.Sprintf("\n%s OVERALL SUMMARY:\n", statusIcon))
 	builder.WriteString(fmt.Sprintf("   📊 Clusters: %d\n", totalClusters))
 	builder.WriteString(fmt.Sprintf("   📋 Total Tasklists: %d\n", grandTotalTasklists))
 	builder.WriteString(fmt.Sprintf("   🧩 Total Partitions: %d\n", grandTotalPartitions))
 	builder.WriteString(fmt.Sprintf("      ✅ Assigned: %d (%.1f%%)\n", grandTotalAssigned, overallPercent))
 	builder.WriteString(fmt.Sprintf("      ❌ Unassigned: %d\n", grandTotalUnassigned))
-	
+
 	if grandTotalRequested > 0 {
 		builder.WriteString(fmt.Sprintf("      🔄 Requested Release: %d\n", grandTotalRequested))
 	}
 	if grandTotalPending > 0 {
 		builder.WriteString(fmt.Sprintf("      ⏳ Pending Release: %d\n", grandTotalPending))
 	}
-	
+
 	builder.WriteString(fmt.Sprintf("   🖥️  Total Nodes: %d\n", grandTotalNodes))
-	
+
 	if grandTotalUnassigned == 0 {
 		builder.WriteString("   🎉 ALL PARTITIONS ASSIGNED! 🎉\n")
 	}
-	
+
 	return builder.String()
 }
 
@@ -227,7 +227,7 @@ func (b *ReporterDataBuilder) BuildTasklistData(ctx context.Context, cluster, do
 	if err != nil {
 		return nil, fmt.Errorf("failed to get allocations: %w", err)
 	}
-	
+
 	data := &TasklistDataObject{
 		Cluster:         cluster,
 		Domain:          domain,
@@ -235,36 +235,51 @@ func (b *ReporterDataBuilder) BuildTasklistData(ctx context.Context, cluster, do
 		TotalPartitions: totalPartitions,
 		LastUpdated:     time.Now(),
 	}
-	
-	// Count partitions by status and track assigned nodes
+
+	// Track unique partitions by status to avoid double-counting conflicts
+	assignedPartitions := make(map[string]bool)
+	requestedPartitions := make(map[string]bool)
+	pendingPartitions := make(map[string]bool)
 	assignedNodesMap := make(map[string]bool)
-	
+
 	for _, allocation := range allocations {
 		nodeId := allocation.NodeID
-		assignedCount, requestedCount, pendingCount := b.countPartitionsByStatus(allocation.PartitionInfo)
-		
-		data.AssignedPartitions += assignedCount
-		data.RequestedPartitions += requestedCount
-		data.PendingPartitions += pendingCount
-		
-		if assignedCount > 0 {
-			assignedNodesMap[nodeId] = true
+		partitionStatuses := b.getPartitionStatusMap(allocation.PartitionInfo)
+
+		// Track unique partitions and nodes
+		for partitionId, status := range partitionStatuses {
+			switch status {
+			case managment.PartitionAllocationAssigned:
+				assignedPartitions[partitionId] = true
+				assignedNodesMap[nodeId] = true
+			case managment.PartitionAllocationRequestedRelease:
+				requestedPartitions[partitionId] = true
+				assignedNodesMap[nodeId] = true
+			case managment.PartitionAllocationPendingRelease:
+				pendingPartitions[partitionId] = true
+				assignedNodesMap[nodeId] = true
+			}
 		}
 	}
-	
+
+	// Convert counts from unique partition maps
+	data.AssignedPartitions = len(assignedPartitions)
+	data.RequestedPartitions = len(requestedPartitions)
+	data.PendingPartitions = len(pendingPartitions)
+
 	// Convert assigned nodes to slice and sort
 	data.AssignedNodes = make([]string, 0, len(assignedNodesMap))
 	for nodeId := range assignedNodesMap {
 		data.AssignedNodes = append(data.AssignedNodes, nodeId[:8]) // Show only first 8 chars
 	}
 	sort.Strings(data.AssignedNodes)
-	
+
 	// Calculate derived values
 	data.UnassignedPartitions = data.TotalPartitions - data.AssignedPartitions
 	if data.TotalPartitions > 0 {
 		data.AssignmentPercentage = float64(data.AssignedPartitions) / float64(data.TotalPartitions) * 100
 	}
-	
+
 	return data, nil
 }
 
@@ -275,15 +290,15 @@ func (b *ReporterDataBuilder) BuildClusterData(ctx context.Context, clusterName 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get domains and tasks: %w", err)
 	}
-	
+
 	data := &ClusterDataObject{
-		ClusterName:     clusterName,
-		TotalTasklists:  len(domainsAndTasks),
-		ActiveNodes:     activeNodes,
-		TasklistData:    make([]TasklistDataObject, 0, len(domainsAndTasks)),
-		LastUpdated:     time.Now(),
+		ClusterName:    clusterName,
+		TotalTasklists: len(domainsAndTasks),
+		ActiveNodes:    activeNodes,
+		TasklistData:   make([]TasklistDataObject, 0, len(domainsAndTasks)),
+		LastUpdated:    time.Now(),
 	}
-	
+
 	// Process each tasklist
 	for _, dt := range domainsAndTasks {
 		tasklistData, err := b.BuildTasklistData(ctx, clusterName, dt.Domain, dt.Tasklist, int(dt.PartitionCount))
@@ -291,7 +306,7 @@ func (b *ReporterDataBuilder) BuildClusterData(ctx context.Context, clusterName 
 			// Continue with other tasklists even if one fails
 			continue
 		}
-		
+
 		data.TasklistData = append(data.TasklistData, *tasklistData)
 		data.TotalPartitions += tasklistData.TotalPartitions
 		data.AssignedPartitions += tasklistData.AssignedPartitions
@@ -299,27 +314,41 @@ func (b *ReporterDataBuilder) BuildClusterData(ctx context.Context, clusterName 
 		data.RequestedPartitions += tasklistData.RequestedPartitions
 		data.PendingPartitions += tasklistData.PendingPartitions
 	}
-	
+
 	// Calculate assignment percentage
 	if data.TotalPartitions > 0 {
 		data.AssignmentPercentage = float64(data.AssignedPartitions) / float64(data.TotalPartitions) * 100
 	}
-	
+
 	return data, nil
 }
 
-// countPartitionsByStatus counts partitions by their allocation status
-func (b *ReporterDataBuilder) countPartitionsByStatus(partitionInfo string) (assigned, requested, pending int) {
+// getPartitionStatusMap returns a map of partition ID to status from JSON data
+func (b *ReporterDataBuilder) getPartitionStatusMap(partitionInfo string) map[string]managment.PartitionAllocationStatus {
+	result := make(map[string]managment.PartitionAllocationStatus)
+	
 	// Parse partition allocation info
 	var allocationInfo AllocationInfo
 	if err := json.Unmarshal([]byte(partitionInfo), &allocationInfo); err != nil {
-		// If JSON parsing fails, fall back to simple counting
-		return b.fallbackPartitionCount(partitionInfo), 0, 0
+		// If JSON parsing fails, return empty map
+		return result
 	}
+
+	// Build partition status map
+	for _, partitionAllocation := range allocationInfo.PartitionAllocationInfos {
+		result[partitionAllocation.PartitionId] = partitionAllocation.AllocationStatus
+	}
+
+	return result
+}
+
+// countPartitionsByStatus counts partitions by their allocation status (kept for compatibility)
+func (b *ReporterDataBuilder) countPartitionsByStatus(partitionInfo string) (assigned, requested, pending int) {
+	statusMap := b.getPartitionStatusMap(partitionInfo)
 	
 	// Count partitions by status
-	for _, partitionAllocation := range allocationInfo.PartitionAllocationInfos {
-		switch partitionAllocation.AllocationStatus {
+	for _, status := range statusMap {
+		switch status {
 		case managment.PartitionAllocationAssigned:
 			assigned++
 		case managment.PartitionAllocationRequestedRelease:
@@ -328,7 +357,7 @@ func (b *ReporterDataBuilder) countPartitionsByStatus(partitionInfo string) (ass
 			pending++
 		}
 	}
-	
+
 	return assigned, requested, pending
 }
 
@@ -338,7 +367,7 @@ func (b *ReporterDataBuilder) fallbackPartitionCount(partitionInfo string) int {
 	count := 0
 	searchStr := "partition_id"
 	start := 0
-	
+
 	for {
 		index := b.findSubstring(partitionInfo[start:], searchStr)
 		if index == -1 {
@@ -347,7 +376,7 @@ func (b *ReporterDataBuilder) fallbackPartitionCount(partitionInfo string) int {
 		count++
 		start += index + len(searchStr)
 	}
-	
+
 	return count
 }
 
@@ -359,7 +388,7 @@ func (b *ReporterDataBuilder) findSubstring(str, substr string) int {
 	if len(substr) > len(str) {
 		return -1
 	}
-	
+
 	for i := 0; i <= len(str)-len(substr); i++ {
 		if str[i:i+len(substr)] == substr {
 			return i

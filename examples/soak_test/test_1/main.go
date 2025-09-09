@@ -268,7 +268,7 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			return managment.NewClusterManager(cf, config, db, locker)
 		}),
 		
-		// Allocation manager (using Algorithm as AllocationManager)
+		// Allocation manager (using simplified Algorithm as AllocationManager)
 		fx.Provide(func(
 			cf gox.CrossFunction,
 			db *helixClusterMysql.Queries,
@@ -276,7 +276,7 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			algorithmConfig := &managment.AlgorithmConfig{
 				TimeToWaitForPartitionReleaseBeforeForceRelease: 10 * time.Second,
 			}
-			return allocation.NewDefaultAlgorithm(cf, db, algorithmConfig)
+			return allocation.NewSimpleAllocationAlgorithm(cf, db, algorithmConfig)
 		}),
 		
 		// Coordinator
