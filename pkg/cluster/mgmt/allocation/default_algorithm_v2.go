@@ -48,6 +48,11 @@ type PartitionState struct {
 	UpdatedTime time.Time
 }
 
+// dbPartitionAllocationInfos represents the JSON structure stored in the database
+type dbPartitionAllocationInfos struct {
+	PartitionAllocationInfos []managment.PartitionAllocationInfo `json:"partition_allocation_infos"`
+}
+
 // NodeState represents the current state of a node
 type NodeState struct {
 	NodeID       string
@@ -193,9 +198,19 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 							nodeState.PartitionIDs = append(nodeState.PartitionIDs, partitionID)
 						}
 						
+						// Safe string truncation for logging
+						winnerShort := winner.NodeID
+						if len(winnerShort) > 8 {
+							winnerShort = winnerShort[:8]
+						}
+						loserShort := loser.NodeID
+						if len(loserShort) > 8 {
+							loserShort = loserShort[:8]
+						}
+						
 						duplicateAssignments = append(duplicateAssignments,
 							fmt.Sprintf("partition %s: kept node %s, conflicted with node %s",
-								partitionID, winner.NodeID[:8], loser.NodeID[:8]))
+								partitionID, winnerShort, loserShort))
 								
 					} else {
 						// No conflict, assign normally
