@@ -2,12 +2,14 @@ package impl
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
+	managment "github.com/devlibx/gox-helix/pkg/cluster/mgmt"
 )
 
 // TasklistStatus represents the status of a single tasklist
@@ -33,6 +35,17 @@ type ClusterStatus struct {
 	CoordinatorChanges    int
 	LastCoordinator       string
 	Tasklists             []TasklistStatus
+}
+
+// PartitionAssignment represents a single partition assignment from the database
+type PartitionAssignment struct {
+	PartitionId      string                              `json:"partition_id"`
+	AllocationStatus managment.PartitionAllocationStatus `json:"allocation_status"`
+}
+
+// AllocationInfo represents the structure of allocation data in the database
+type AllocationInfo struct {
+	PartitionAllocationInfos []PartitionAssignment `json:"partition_allocation_infos"`
 }
 
 // StatusReporter handles real-time monitoring and reporting of cluster status
@@ -170,9 +183,11 @@ func (sr *StatusReporter) getTasklistStatus(ctx context.Context, cluster, domain
 	
 	for _, allocation := range allocations {
 		// Parse partition info to count actual assigned partitions
-		// This is a simplified count - in reality we'd parse the JSON
-		assignedPartitions += sr.estimatePartitionsFromAllocation(allocation.PartitionInfo)
-		assignedNodesMap[allocation.NodeID] = true
+		assignedCount := sr.countAssignedPartitions(allocation.PartitionInfo)
+		assignedPartitions += assignedCount
+		if assignedCount > 0 {
+			assignedNodesMap[allocation.NodeID] = true
+		}
 	}
 	
 	// Convert assigned nodes to slice
@@ -194,11 +209,29 @@ func (sr *StatusReporter) getTasklistStatus(ctx context.Context, cluster, domain
 	}, nil
 }
 
-// estimatePartitionsFromAllocation estimates partition count from allocation info
-// This is a simplified estimation - in a production system you'd parse the JSON properly
-func (sr *StatusReporter) estimatePartitionsFromAllocation(partitionInfo string) int {
+// countAssignedPartitions counts only partitions with "assigned" status
+func (sr *StatusReporter) countAssignedPartitions(partitionInfo string) int {
+	// Parse partition allocation info
+	var allocationInfo AllocationInfo
+	if err := json.Unmarshal([]byte(partitionInfo), &allocationInfo); err != nil {
+		// If JSON parsing fails, fall back to string search (old behavior)
+		return sr.fallbackPartitionCount(partitionInfo)
+	}
+	
+	// Count only partitions with "assigned" status
+	assignedCount := 0
+	for _, partitionAssignment := range allocationInfo.PartitionAllocationInfos {
+		if partitionAssignment.AllocationStatus == managment.PartitionAllocationAssigned {
+			assignedCount++
+		}
+	}
+	
+	return assignedCount
+}
+
+// fallbackPartitionCount provides fallback counting when JSON parsing fails
+func (sr *StatusReporter) fallbackPartitionCount(partitionInfo string) int {
 	// Simple heuristic: count occurrences of "partition_id" in the JSON string
-	// This gives us a rough estimate without full JSON parsing
 	count := 0
 	searchStr := "partition_id"
 	start := 0

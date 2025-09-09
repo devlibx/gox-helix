@@ -136,7 +136,7 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 						slog.Info(nodeId, "node registered successfully", slog.String("cluster", c.Name), slog.String("nodeId", nodeId))
 						break
 					} else {
-						time.Sleep(1 * time.Second)
+						c.Sleep(1 * time.Second)
 					}
 				}
 				runLoop = false

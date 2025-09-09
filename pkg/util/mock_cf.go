@@ -9,21 +9,29 @@ import (
 // MockCrossFunction provides a controllable time service for testing
 type MockCrossFunction struct {
 	gox.CrossFunction
-	mockTime time.Time
-	mutex    sync.RWMutex
+	startTime    time.Time     // Real time when mock was created
+	mockTime     time.Time     // Initial mock time
+	acceleration int           // Time acceleration factor (e.g., 10 for 10x speed)
+	mutex        sync.RWMutex
 }
 
 func NewMockCrossFunction(initialTime time.Time) *MockCrossFunction {
 	return &MockCrossFunction{
 		CrossFunction: gox.NewNoOpCrossFunction(),
+		startTime:     time.Now(),
 		mockTime:      initialTime,
+		acceleration:  10, // 10x time acceleration
 	}
 }
 
 func (m *MockCrossFunction) Now() time.Time {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	return m.mockTime
+	
+	// Calculate accelerated time based on real time elapsed
+	realElapsed := time.Since(m.startTime)
+	acceleratedElapsed := time.Duration(int64(realElapsed) * int64(m.acceleration))
+	return m.mockTime.Add(acceleratedElapsed)
 }
 
 func (m *MockCrossFunction) SetTime(t time.Time) {
@@ -39,7 +47,7 @@ func (m *MockCrossFunction) AdvanceTime(duration time.Duration) {
 }
 
 func (m *MockCrossFunction) Sleep(d time.Duration) {
-	ms := d.Milliseconds()
-	newMs := ms / 10
-	time.Sleep(time.Duration(newMs) * time.Millisecond)
+	// Sleep for real duration divided by acceleration factor
+	actualSleep := time.Duration(int64(d) / int64(m.acceleration))
+	time.Sleep(actualSleep)
 }

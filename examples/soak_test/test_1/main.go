@@ -125,6 +125,7 @@ func (app *SoakTestApp) RunSoakTest(ctx context.Context) error {
 	fmt.Printf("   - Domains per cluster: %d\n", app.clusterConfigs[0].DomainCount)
 	fmt.Printf("   - Tasklists per domain: %d\n", app.clusterConfigs[0].TasklistsPerDomain)
 	fmt.Printf("   - Initial nodes per cluster: %d\n", app.clusterConfigs[0].InitialNodes)
+	fmt.Printf("   - Chaos duration: 1 minute, Stabilization: 30 seconds\n")
 	fmt.Printf("   - Time acceleration: 10x (1s = 100ms)\n")
 	fmt.Printf("   - Coordinator TTL: 2s (fast coordinator churn)\n")
 	fmt.Printf("═══════════════════════════════════════════════════════════════════════════\n\n")
@@ -365,7 +366,7 @@ func (app *SoakTestApp) stabilizationPhase(ctx context.Context) error {
 	fmt.Printf("🔄 STABILIZATION PHASE\n")
 	fmt.Printf("═══════════════════════════════════════════════════════════════════════════\n")
 	
-	if err := app.chaosController.StabilizationPhase(ctx, 10*time.Second); err != nil {
+	if err := app.chaosController.StabilizationPhase(ctx, 30*time.Second); err != nil {
 		return fmt.Errorf("stabilization phase failed: %w", err)
 	}
 	
