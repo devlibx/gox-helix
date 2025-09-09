@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"sort"
+	"time"
 
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
@@ -43,6 +45,7 @@ type PartitionState struct {
 	PartitionID string
 	NodeID      string                            // empty if unassigned
 	Status      managment.PartitionAllocationStatus
+	UpdatedTime time.Time
 }
 
 // NodeState represents the current state of a node
@@ -116,10 +119,13 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 			PartitionID: partitionID,
 			NodeID:      "",
 			Status:      managment.PartitionAllocationUnassigned,
+			UpdatedTime: s.Now(),
 		}
 	}
 	
-	// Parse existing allocations
+	// Parse existing allocations with conflict resolution
+	duplicateAssignments := make([]string, 0)
+	
 	for _, allocation := range allocations {
 		allocInfo, err := goxJsonUtils.BytesToObject[dbPartitionAllocationInfos]([]byte(allocation.PartitionInfo))
 		if err != nil {
@@ -128,6 +134,7 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 		
 		for _, partitionInfo := range allocInfo.PartitionAllocationInfos {
 			partitionID := partitionInfo.PartitionId
+			nodeID := allocation.NodeID
 			
 			// Only process known partitions
 			if partition, exists := partitionStates[partitionID]; exists {
@@ -142,16 +149,69 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 					}
 				}
 				
-				// Only assign to active nodes
-				if nodeState, nodeExists := nodeStates[allocation.NodeID]; nodeExists && nodeState.IsActive {
-					if partitionInfo.AllocationStatus == managment.PartitionAllocationAssigned {
-						partition.NodeID = allocation.NodeID
+				// Only consider assignments to active nodes
+				nodeState, nodeExists := nodeStates[nodeID]
+				if !nodeExists || !nodeState.IsActive {
+					continue // Skip inactive nodes
+				}
+				
+				if partitionInfo.AllocationStatus == managment.PartitionAllocationAssigned {
+					// Check for conflict (partition already assigned to another node)
+					if partition.NodeID != "" && partition.NodeID != nodeID {
+						// Conflict detected! Apply deterministic resolution rules
+						existing := partition
+						candidate := &PartitionState{
+							PartitionID: partitionID,
+							NodeID:      nodeID,
+							Status:      partitionInfo.AllocationStatus,
+							UpdatedTime: partitionInfo.UpdatedTime,
+						}
+						
+						var winner, loser *PartitionState
+						
+						// Rule 1: Prefer more recent timestamp
+						if candidate.UpdatedTime.After(existing.UpdatedTime) {
+							winner, loser = candidate, existing
+						} else if existing.UpdatedTime.After(candidate.UpdatedTime) {
+							winner, loser = existing, candidate
+						} else {
+							// Rule 2: If same timestamp, prefer lexicographically smaller node ID
+							if existing.NodeID < candidate.NodeID {
+								winner, loser = existing, candidate
+							} else {
+								winner, loser = candidate, existing
+							}
+						}
+						
+						// Update partition with winner
+						partition.NodeID = winner.NodeID
+						partition.Status = winner.Status
+						partition.UpdatedTime = winner.UpdatedTime
+						
+						// Update node assignments
+						if winner.NodeID == nodeID {
+							nodeState.PartitionIDs = append(nodeState.PartitionIDs, partitionID)
+						}
+						
+						duplicateAssignments = append(duplicateAssignments,
+							fmt.Sprintf("partition %s: kept node %s, conflicted with node %s",
+								partitionID, winner.NodeID[:8], loser.NodeID[:8]))
+								
+					} else {
+						// No conflict, assign normally
+						partition.NodeID = nodeID
 						partition.Status = managment.PartitionAllocationAssigned
+						partition.UpdatedTime = partitionInfo.UpdatedTime
 						nodeState.PartitionIDs = append(nodeState.PartitionIDs, partitionID)
 					}
 				}
 			}
 		}
+	}
+	
+	// Log conflicts for debugging
+	if len(duplicateAssignments) > 0 {
+		slog.Debug("⚠️  Resolved duplicate partition assignments during state loading", "count", len(duplicateAssignments))
 	}
 	
 	return partitionStates, nodeStates, nil
@@ -278,9 +338,9 @@ func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[strin
 func (s *SimpleAllocationAlgorithm) updateDatabase(ctx context.Context, taskListInfo managment.TaskListInfo, finalAssignments map[string][]string) error {
 	
 	for nodeID, partitionIDs := range finalAssignments {
-		if len(partitionIDs) == 0 {
-			continue // Skip nodes with no assignments
-		}
+		// Process ALL nodes, including those with empty assignments
+		// This ensures that nodes that lost partitions due to conflict resolution
+		// get their old allocation records cleared by upserting empty partition lists
 		
 		// Create allocation object
 		allocation := &managment.Allocation{
