@@ -345,9 +345,9 @@ func (app *SoakTestApp) chaosPhase(ctx context.Context) error {
 		clusterNames[i] = config.Name
 	}
 	
-	// Start status reporting in background
-	statusCtx, statusCancel := context.WithCancel(ctx)
-	defer statusCancel()
+	// Start status reporting in background with separate context
+	statusCtx, statusCancel := context.WithCancel(context.Background())
+	app.cancelFunctions = append(app.cancelFunctions, statusCancel)
 	
 	go app.statusReporter.StartPeriodicReporting(statusCtx, 10*time.Second, clusterNames)
 	
