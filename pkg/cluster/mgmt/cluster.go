@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
+	"github.com/devlibx/gox-helix/pkg/common/lock"
 	"time"
 )
 
@@ -13,6 +14,10 @@ type ClusterManagerConfig struct {
 }
 
 type ClusterManager interface {
+	GetClusterName() string
+
+	BecomeClusterCoordinator(ctx context.Context) *lock.AcquireResponse
+
 	RegisterNode(ctx context.Context, request NodeRegisterRequest) (*NodeRegisterResponse, error)
 
 	GetActiveNodes(ctx context.Context) ([]Node, error)

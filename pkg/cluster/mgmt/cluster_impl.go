@@ -66,6 +66,30 @@ func NewClusterManager(
 	return cm, nil
 }
 
+func (c *clusterManagerImpl) GetClusterName() string {
+	return c.Name
+}
+
+func (c *clusterManagerImpl) BecomeClusterCoordinator(ctx context.Context) *lock.AcquireResponse {
+
+	// Acquire cluster controller lock to do this job
+	if r, err := c.locker.Acquire(ctx, &lock.AcquireRequest{
+		LockKey: "cluster-controller-" + c.Name,
+		OwnerID: c.clusterId,
+		TTL:     10 * time.Second,
+	}); err != nil || !r.Acquired {
+		slog.Debug("this node is not the cluster controller - (expected with multi node cluster) not allowed to mark nodes inactive", slog.String("cluster", c.Name))
+		return &lock.AcquireResponse{
+			OwnerID:  "",
+			Acquired: false,
+			Epoch:    0,
+		}
+	} else {
+		return r
+	}
+
+}
+
 func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegisterRequest) (*NodeRegisterResponse, error) {
 	now := c.Now()
 	nodeId := uuid.NewString()

@@ -57,6 +57,12 @@ ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
                         metadata        = VALUES(metadata),
                         status          = 1;
 
+-- name: GetAllDomainsAndTaskListsByClusterCname :many
+SELECT *
+FROM helix_cluster
+WHERE cluster = ?
+  AND status = 1;
+
 -- name: GetClustersByDomain :many
 SELECT cluster,
        domain,

@@ -30,6 +30,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getActiveNodesStmt, err = db.PrepareContext(ctx, getActiveNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query GetActiveNodes: %w", err)
 	}
+	if q.getAllDomainsAndTaskListsByClusterCnameStmt, err = db.PrepareContext(ctx, getAllDomainsAndTaskListsByClusterCname); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllDomainsAndTaskListsByClusterCname: %w", err)
+	}
 	if q.getAllocationByIdStmt, err = db.PrepareContext(ctx, getAllocationById); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllocationById: %w", err)
 	}
@@ -82,6 +85,11 @@ func (q *Queries) Close() error {
 	if q.getActiveNodesStmt != nil {
 		if cerr := q.getActiveNodesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getActiveNodesStmt: %w", cerr)
+		}
+	}
+	if q.getAllDomainsAndTaskListsByClusterCnameStmt != nil {
+		if cerr := q.getAllDomainsAndTaskListsByClusterCnameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllDomainsAndTaskListsByClusterCnameStmt: %w", cerr)
 		}
 	}
 	if q.getAllocationByIdStmt != nil {
@@ -186,43 +194,45 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                            DBTX
-	tx                            *sql.Tx
-	deregisterNodeStmt            *sql.Stmt
-	getActiveNodesStmt            *sql.Stmt
-	getAllocationByIdStmt         *sql.Stmt
-	getAllocationByNodeIdStmt     *sql.Stmt
-	getAllocationsForTasklistStmt *sql.Stmt
-	getClusterStmt                *sql.Stmt
-	getClustersByDomainStmt       *sql.Stmt
-	getNodeByIdStmt               *sql.Stmt
-	markInactiveNodesStmt         *sql.Stmt
-	markNodeDeletableStmt         *sql.Stmt
-	markNodeInactiveStmt          *sql.Stmt
-	updateHeartbeatStmt           *sql.Stmt
-	upsertAllocationStmt          *sql.Stmt
-	upsertClusterStmt             *sql.Stmt
-	upsertNodeStmt                *sql.Stmt
+	db                                          DBTX
+	tx                                          *sql.Tx
+	deregisterNodeStmt                          *sql.Stmt
+	getActiveNodesStmt                          *sql.Stmt
+	getAllDomainsAndTaskListsByClusterCnameStmt *sql.Stmt
+	getAllocationByIdStmt                       *sql.Stmt
+	getAllocationByNodeIdStmt                   *sql.Stmt
+	getAllocationsForTasklistStmt               *sql.Stmt
+	getClusterStmt                              *sql.Stmt
+	getClustersByDomainStmt                     *sql.Stmt
+	getNodeByIdStmt                             *sql.Stmt
+	markInactiveNodesStmt                       *sql.Stmt
+	markNodeDeletableStmt                       *sql.Stmt
+	markNodeInactiveStmt                        *sql.Stmt
+	updateHeartbeatStmt                         *sql.Stmt
+	upsertAllocationStmt                        *sql.Stmt
+	upsertClusterStmt                           *sql.Stmt
+	upsertNodeStmt                              *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                            tx,
-		tx:                            tx,
-		deregisterNodeStmt:            q.deregisterNodeStmt,
-		getActiveNodesStmt:            q.getActiveNodesStmt,
-		getAllocationByIdStmt:         q.getAllocationByIdStmt,
-		getAllocationByNodeIdStmt:     q.getAllocationByNodeIdStmt,
-		getAllocationsForTasklistStmt: q.getAllocationsForTasklistStmt,
-		getClusterStmt:                q.getClusterStmt,
-		getClustersByDomainStmt:       q.getClustersByDomainStmt,
-		getNodeByIdStmt:               q.getNodeByIdStmt,
-		markInactiveNodesStmt:         q.markInactiveNodesStmt,
-		markNodeDeletableStmt:         q.markNodeDeletableStmt,
-		markNodeInactiveStmt:          q.markNodeInactiveStmt,
-		updateHeartbeatStmt:           q.updateHeartbeatStmt,
-		upsertAllocationStmt:          q.upsertAllocationStmt,
-		upsertClusterStmt:             q.upsertClusterStmt,
-		upsertNodeStmt:                q.upsertNodeStmt,
+		db:                 tx,
+		tx:                 tx,
+		deregisterNodeStmt: q.deregisterNodeStmt,
+		getActiveNodesStmt: q.getActiveNodesStmt,
+		getAllDomainsAndTaskListsByClusterCnameStmt: q.getAllDomainsAndTaskListsByClusterCnameStmt,
+		getAllocationByIdStmt:                       q.getAllocationByIdStmt,
+		getAllocationByNodeIdStmt:                   q.getAllocationByNodeIdStmt,
+		getAllocationsForTasklistStmt:               q.getAllocationsForTasklistStmt,
+		getClusterStmt:                              q.getClusterStmt,
+		getClustersByDomainStmt:                     q.getClustersByDomainStmt,
+		getNodeByIdStmt:                             q.getNodeByIdStmt,
+		markInactiveNodesStmt:                       q.markInactiveNodesStmt,
+		markNodeDeletableStmt:                       q.markNodeDeletableStmt,
+		markNodeInactiveStmt:                        q.markNodeInactiveStmt,
+		updateHeartbeatStmt:                         q.updateHeartbeatStmt,
+		upsertAllocationStmt:                        q.upsertAllocationStmt,
+		upsertClusterStmt:                           q.upsertClusterStmt,
+		upsertNodeStmt:                              q.upsertNodeStmt,
 	}
 }

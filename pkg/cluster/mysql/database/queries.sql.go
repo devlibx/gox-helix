@@ -108,6 +108,52 @@ func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*Ge
 	return items, nil
 }
 
+const getAllDomainsAndTaskListsByClusterCname = `-- name: GetAllDomainsAndTaskListsByClusterCname :many
+SELECT id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+FROM helix_cluster
+WHERE cluster = ?
+  AND status = 1
+`
+
+// GetAllDomainsAndTaskListsByClusterCname
+//
+//	SELECT id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+//	FROM helix_cluster
+//	WHERE cluster = ?
+//	  AND status = 1
+func (q *Queries) GetAllDomainsAndTaskListsByClusterCname(ctx context.Context, cluster string) ([]*HelixCluster, error) {
+	rows, err := q.query(ctx, q.getAllDomainsAndTaskListsByClusterCnameStmt, getAllDomainsAndTaskListsByClusterCname, cluster)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*HelixCluster{}
+	for rows.Next() {
+		var i HelixCluster
+		if err := rows.Scan(
+			&i.ID,
+			&i.Cluster,
+			&i.Domain,
+			&i.Tasklist,
+			&i.Metadata,
+			&i.PartitionCount,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllocationById = `-- name: GetAllocationById :one
 SELECT id,
        cluster,

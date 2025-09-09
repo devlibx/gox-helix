@@ -33,6 +33,13 @@ type Querier interface {
 	//  WHERE cluster_name = ?
 	//    AND status = 1
 	GetActiveNodes(ctx context.Context, clusterName string) ([]*GetActiveNodesRow, error)
+	//GetAllDomainsAndTaskListsByClusterCname
+	//
+	//  SELECT id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+	//  FROM helix_cluster
+	//  WHERE cluster = ?
+	//    AND status = 1
+	GetAllDomainsAndTaskListsByClusterCname(ctx context.Context, cluster string) ([]*HelixCluster, error)
 	//GetAllocationById
 	//
 	//  SELECT id,

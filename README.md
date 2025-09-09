@@ -56,6 +56,11 @@ We are actively developing the core framework, focusing on robust distributed co
     *   **Default Allocation Algorithm:** Implemented a default algorithm for partition allocation, which is responsible for distributing partitions among the active nodes in the cluster.
     *   **Partition Rebalancing:** Implemented a rebalancing algorithm to distribute partitions evenly among active nodes.
 
+4.  **Cluster Coordinator:**
+    *   **Coordinator Recipe:** Introduced a new `coordinator` recipe responsible for managing cluster-wide operations.
+    *   **Leader Election:** Implements leader election using the distributed locking mechanism to ensure only one active coordinator.
+    *   **Partition Allocation Orchestration:** Orchestrates partition allocation by iterating through domains and task lists, and triggering the partition rebalancing algorithm.
+
 ## Next Steps
 
 To continue, we need to:
