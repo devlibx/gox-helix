@@ -58,6 +58,11 @@ func NewClusterManager(
 		clusterId:            uuid.New().String(),
 	}
 
+	// Have 10 sec ttl to remain cluster controller
+	if config.ControllerTtl.Milliseconds() == 0 {
+		config.ControllerTtl = 10 * time.Second
+	}
+
 	// Start inactive node clean-up worker thread (mark nodes inactive if they have not give successful HB)
 	go func() {
 		cm.removeInactiveNodes(context.Background())
@@ -76,7 +81,7 @@ func (c *clusterManagerImpl) BecomeClusterCoordinator(ctx context.Context) *lock
 	if r, err := c.locker.Acquire(ctx, &lock.AcquireRequest{
 		LockKey: "cluster-controller-" + c.Name,
 		OwnerID: c.clusterId,
-		TTL:     10 * time.Second,
+		TTL:     c.clusterManagerConfig.ControllerTtl,
 	}); err != nil || !r.Acquired {
 		slog.Debug("this node is not the cluster controller - (expected with multi node cluster) not allowed to mark nodes inactive", slog.String("cluster", c.Name))
 		return &lock.AcquireResponse{
@@ -87,7 +92,6 @@ func (c *clusterManagerImpl) BecomeClusterCoordinator(ctx context.Context) *lock
 	} else {
 		return r
 	}
-
 }
 
 func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegisterRequest) (*NodeRegisterResponse, error) {
@@ -211,7 +215,7 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 		if r, err := c.locker.Acquire(ctx, &lock.AcquireRequest{
 			LockKey: "cluster-controller-" + c.Name,
 			OwnerID: c.clusterId,
-			TTL:     10 * time.Second,
+			TTL:     c.clusterManagerConfig.ControllerTtl,
 		}); err != nil || !r.Acquired {
 			slog.Debug("this node is not the cluster controller - (expected with multi node cluster) not allowed to mark nodes inactive", slog.String("cluster", c.Name))
 			c.Sleep(time.Second)

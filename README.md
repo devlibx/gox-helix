@@ -117,6 +117,17 @@ To run the application:
 go run main.go
 ```
 
+## Soak Test Example
+
+A comprehensive soak test example is available in the `examples/soak_test/test_1` directory. This example demonstrates how to use `gox-helix` to build a distributed application, including cluster setup, node management, coordinator election, partition allocation, and chaos testing.
+
+To run the soak test:
+
+```sh
+cd examples/soak_test/test_1
+go run main.go
+```
+
 ## Contributing
 
 We welcome contributions from the community. Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.

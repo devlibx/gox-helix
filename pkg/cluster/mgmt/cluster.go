@@ -11,6 +11,7 @@ import (
 type ClusterManagerConfig struct {
 	NodeHeartbeatInterval time.Duration `json:"node_heartbeat_interval" yaml:"node_heartbeat_interval"`
 	Name                  string        `json:"name" yaml:"name"`
+	ControllerTtl         time.Duration `json:"controller_ttl" yaml:"controller_ttl"`
 }
 
 type ClusterManager interface {
