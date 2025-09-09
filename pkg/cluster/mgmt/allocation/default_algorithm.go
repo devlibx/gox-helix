@@ -9,6 +9,7 @@ import (
 	goxJsonUtils "github.com/devlibx/gox-base/v2/serialization/utils/json"
 	managment "github.com/devlibx/gox-helix/pkg/cluster/mgmt"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
+	"log/slog"
 	"time"
 )
 
@@ -89,7 +90,7 @@ func (d *defaultAlgorithm) CalculateAllocation(ctx context.Context, taskListInfo
 func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations []*helixClusterMysql.HelixAllocation) map[string]*nodePartitionMapping {
 	nodePartitionMappings := map[string]*nodePartitionMapping{}
 	duplicateAssignments := make([]string, 0) // Track partitions with conflicts
-	
+
 	for _, allocation := range allocations {
 		infos, err := goxJsonUtils.BytesToObject[dbPartitionAllocationInfos]([]byte(allocation.PartitionInfo))
 		if err == nil {
@@ -100,12 +101,12 @@ func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations
 					Status:      info.AllocationStatus,
 					UpdatedTime: info.UpdatedTime,
 				}
-				
+
 				// Check for duplicate partition assignment
 				if existing, exists := nodePartitionMappings[info.PartitionId]; exists {
 					// Duplicate found! Choose winner based on deterministic rules
 					var winner, loser *nodePartitionMapping
-					
+
 					// Rule 1: Prefer "assigned" status over others
 					if existing.Status == managment.PartitionAllocationAssigned && m.Status != managment.PartitionAllocationAssigned {
 						winner, loser = existing, m
@@ -126,10 +127,10 @@ func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations
 							}
 						}
 					}
-					
+
 					// Keep winner, mark loser for cleanup (we can't directly modify DB here)
 					nodePartitionMappings[info.PartitionId] = winner
-					
+
 					// Safe string truncation for logging
 					winnerNodeShort := winner.OwnerNode
 					if len(winnerNodeShort) > 8 {
@@ -139,9 +140,9 @@ func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations
 					if len(loserNodeShort) > 8 {
 						loserNodeShort = loserNodeShort[:8]
 					}
-					
-					duplicateAssignments = append(duplicateAssignments, 
-						fmt.Sprintf("partition %s: kept node %s, conflicted with node %s", 
+
+					duplicateAssignments = append(duplicateAssignments,
+						fmt.Sprintf("partition %s: kept node %s, conflicted with node %s",
 							info.PartitionId, winnerNodeShort, loserNodeShort))
 				} else {
 					nodePartitionMappings[info.PartitionId] = m
@@ -149,15 +150,15 @@ func (d *defaultAlgorithm) buildNodePartitionMappingFromDbAllocation(allocations
 			}
 		}
 	}
-	
+
 	// Log duplicate assignments for debugging
 	if len(duplicateAssignments) > 0 {
-		fmt.Printf("⚠️  Resolved %d duplicate partition assignments:\n", len(duplicateAssignments))
+		slog.Debug("⚠️  Resolved %d duplicate partition assignments:\n", len(duplicateAssignments))
 		for _, dup := range duplicateAssignments {
 			fmt.Printf("   - %s\n", dup)
 		}
 	}
-	
+
 	return nodePartitionMappings
 }
 
@@ -214,7 +215,6 @@ func (d *defaultAlgorithm) distributeWork(taskListInfo managment.TaskListInfo, n
 	return rebalancer.DistributeWork(taskListInfo, nodePartitionMappings, nodes)
 }
 
-
 func (d *defaultAlgorithm) updateAssignment(ctx context.Context, taskListInfo managment.TaskListInfo, nodePartitionMappings map[string]*nodePartitionMapping) error {
 
 	allocations := map[string]*managment.Allocation{}
@@ -224,7 +224,7 @@ func (d *defaultAlgorithm) updateAssignment(ctx context.Context, taskListInfo ma
 		if v.OwnerNode == "" || v.Status == managment.PartitionAllocationUnassigned || v.Status == managment.PartitionAllocationPlaceholder {
 			continue
 		}
-		
+
 		if _, ok := allocations[v.OwnerNode]; !ok {
 			allocations[v.OwnerNode] = &managment.Allocation{
 				Cluster:                  taskListInfo.Cluster,

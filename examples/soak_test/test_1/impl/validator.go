@@ -53,6 +53,16 @@ type TasklistValidationResult struct {
 	PartitionAssignments map[string]string // partitionId -> nodeId
 }
 
+// PartitionAssignment represents a single partition assignment from the database
+type PartitionAssignment struct {
+	PartitionId      string                              `json:"partition_id"`
+	AllocationStatus managment.PartitionAllocationStatus `json:"allocation_status"`
+}
+
+// AllocationInfo represents the structure of allocation data in the database
+type AllocationInfo struct {
+	PartitionAllocationInfos []PartitionAssignment `json:"partition_allocation_infos"`
+}
 
 // Validator handles comprehensive validation of partition allocation completeness
 type Validator struct {
