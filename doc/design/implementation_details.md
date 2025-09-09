@@ -46,7 +46,27 @@ sql:
 
 ### Schema Details
 
-The `helix_locks` table, central to the distributed locking mechanism, includes key fields:
+`gox-helix` utilizes several key tables for its distributed coordination:
 
-*   `status`: This field, now a `TINYINT`, represents the lock's state (e.g., `1` for active, `0` for inactive, `2` for deletable). Corresponding Go constants are defined in `pkg/common/lock/mysql/database/constants.go` for type-safe usage.
-*   `epoch`: A `bigint` field used for optimistic locking. It acts as a version token, incrementing with each successful lock acquisition or renewal by a new owner, which helps prevent race conditions and ensures consistency in a distributed environment.
+*   **`helix_locks`**: Central to the distributed locking mechanism, this table includes:
+    *   `status`: A `TINYINT` representing the lock's state (e.g., `1` for active, `0` for inactive, `2` for deletable). Corresponding Go constants are defined in `pkg/common/lock/mysql/database/constants.go` for type-safe usage.
+    *   `epoch`: A `bigint` field used for optimistic locking. It acts as a version token, incrementing with each successful lock acquisition or renewal by a new owner, which helps prevent race conditions and ensures consistency in a distributed environment.
+
+*   **`helix_nodes`**: Stores information about active nodes in the cluster, including their registration, heartbeating, and status tracking.
+
+*   **`helix_allocation`**: Records partition allocation information, detailing which partitions are assigned to which nodes, along with their current status and metadata.
+
+## Cluster Coordinator Implementation
+
+The cluster coordinator functionality is implemented within the `pkg/cluster/recipe/coordinator` package. Key aspects include:
+
+*   **Coordinator Interface (`api.go`):** Defines the contract for coordinator operations, such as starting the coordination loop.
+*   **Coordinator Implementation (`coordinator.go`):** Provides the concrete implementation of the coordinator, leveraging various `gox-helix` components like `ClusterManager`, `AllocationManager`, and `Locker`.
+*   **Periodic Allocation (`start_operation.go`):** The coordinator's `Start` method initiates a periodic loop that performs partition allocation. This involves:
+    *   Acquiring a cluster-wide lock to ensure single-coordinator operation.
+    *   Discovering all active domains and task lists from the `helix_cluster` table.
+    *   Invoking the `AllocationManager` to calculate optimal partition assignments for each task list.
+    *   Updating the database with the new assignments.
+*   **Error Handling:** The coordinator includes robust error handling, specifically filtering out expected leadership errors (e.g., when another node becomes the leader) to prevent log spam and ensure smooth transitions.
+
+This modular design allows for clear separation of concerns and facilitates future enhancements to the coordinator's responsibilities.

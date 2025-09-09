@@ -32,7 +32,7 @@ The framework uses MySQL as a backend to store the state of the cluster. This in
 
 *   Domains, queues, and partitions
 *   Registered workers
-*   Partition assignments
+*   Partition assignments, stored in the `helix_allocation` table.
 *   Distributed locks for leader election and other coordination tasks, primarily using the `helix_locks` table.
 
 Using MySQL as a backend provides a familiar and reliable way to store the state of the cluster.
@@ -41,13 +41,13 @@ Using MySQL as a backend provides a familiar and reliable way to store the state
 
 The coordinator is a single node that is responsible for managing the cluster. The coordinator is elected using a robust distributed lock mechanism implemented in MySQL, leveraging the `helix_locks` table with a `TINYINT` status field and an `epoch` for optimistic locking.
 
-The responsibilities of the coordinator include:
+The coordinator functionality is encapsulated within the `pkg/cluster/recipe/coordinator` package. Its responsibilities include:
 
 *   **Worker Registration:** When a new worker starts, it registers itself with the coordinator.
 *   **Heartbeating:** Workers send periodic heartbeats to the coordinator to indicate that they are alive.
 *   **Failure Detection:** The coordinator detects worker failures by monitoring heartbeats. If a worker misses a certain number of heartbeats, it is considered to be dead.
-*   **Partition Allocation:** The coordinator is responsible for allocating partitions to workers. The allocation is dynamic and is re-evaluated periodically.
-*   **Rebalancing:** When a worker joins or leaves the cluster, the coordinator rebalances the partitions among the available workers.
+*   **Partition Allocation Orchestration:** The coordinator periodically discovers active task lists and invokes the partition allocation algorithm to determine optimal assignments. It then updates the database with these assignments.
+*   **Rebalancing:** When a worker joins or leaves the cluster, or when partitions become unassigned, the coordinator triggers the rebalancing process to redistribute partitions among the available workers.
 
 ### 3.3. Worker
 
@@ -64,11 +64,12 @@ The responsibilities of a worker include:
 The following is a high-level overview of the workflow:
 
 1.  An application defines a domain, a set of queues, and a set of partitions.
-2.  Workers are started. Each worker registers itself with the coordinator.
-3.  The coordinator allocates the partitions to the available workers.
-4.  Workers execute the tasks for the partitions that are assigned to them.
-5.  If a worker fails, the coordinator detects the failure and re-assigns its partitions to other workers.
-6.  If a new worker joins the cluster, the coordinator rebalances the partitions to include the new worker.
+2.  Workers are started. Each worker registers itself with the cluster manager.
+3.  A coordinator is elected using the distributed locking mechanism.
+4.  The elected coordinator periodically discovers task lists and calculates optimal partition assignments, including rebalancing and resolving any duplicate assignments.
+5.  Workers continuously monitor the database for their assigned partitions and execute the corresponding tasks.
+6.  If a worker fails, the cluster manager detects the failure, and the coordinator eventually re-assigns its partitions to other active workers.
+7.  If a new worker joins the cluster, the coordinator rebalances the partitions to include the new worker.
 
 ## 5. Future Work
 

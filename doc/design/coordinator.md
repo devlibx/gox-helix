@@ -19,6 +19,8 @@ This document outlines the design for coordinator election, ensuring a single ac
 
 We will use a distributed lock implemented in MySQL to manage coordinator election. A dedicated `helix_locks` table will be used for this purpose.
 
+The coordinator functionality is encapsulated within the `pkg/cluster/recipe/coordinator` package, providing a clear separation of concerns. The `Coordinator` interface defines the contract for coordinator operations, and `coordinatorImpl` provides the concrete implementation.
+
 ### 3.1. Database Schema for Locking
 
 We will use the `helix_locks` table with the following schema:
@@ -47,8 +49,8 @@ CREATE TABLE helix_locks (
 
 ### 3.2. Leader Election Workflow
 
-1.  A worker node starts up and attempts to become the coordinator.
-2.  It attempts to acquire the lock using an atomic `INSERT ... ON DUPLICATE KEY UPDATE` operation. This operation tries to insert a new lock record or update an existing one if it's expired or owned by the same node.
+1.  A worker node starts up and attempts to become the coordinator by calling the `BecomeClusterCoordinator` method on the `ClusterManager` interface.
+2.  This method attempts to acquire the lock using an atomic `INSERT ... ON DUPLICATE KEY UPDATE` operation. This operation tries to insert a new lock record or update an existing one if it's expired or owned by the same node.
 
     ```sql
     INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
@@ -65,9 +67,9 @@ CREATE TABLE helix_locks (
 
 ### 3.3. Maintaining Leadership (Heartbeating)
 
-The active coordinator is responsible for renewing its lock before it expires. This is done by re-executing the `TryUpsertLock` operation with its own `owner_id` and an updated `expires_at`.
+The active coordinator is responsible for renewing its lock before it expires. This is done by re-executing the `TryUpsertLock` operation with its own `owner_id` and an updated `expires_at`. The `TTL` for the coordinator lock is configurable via the `ControllerTtl` field in `ClusterManagerConfig`.
 
-1.  The coordinator will periodically (e.g., every 5 seconds, which is half of the `lock_timeout`) execute the `TryUpsertLock` query.
+1.  The coordinator will periodically (e.g., every 5 seconds, which is half of the `ControllerTtl`) execute the `TryUpsertLock` query.
 
     ```sql
     INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
@@ -87,3 +89,13 @@ Non-coordinator nodes will periodically check for a stale lock.
 2.  If the lock is expired (`expires_at` is in the past) or if no active `coordinator_lock` row exists, the node will attempt to acquire the lock using the `TryUpsertLock` operation described in Section 3.2.
 3.  The atomic nature of `TryUpsertLock` ensures that only one node can successfully acquire the lock at a time, even in a race condition. The `epoch` field further guarantees that only the latest successful acquisition is considered valid.
 4.  After executing the `TryUpsertLock` query, the node must read the `helix_locks` table again to confirm that its `owner_id` is now the current owner and the `epoch` reflects its successful acquisition. If confirmed, it becomes the new coordinator.
+
+### 3.5. Partition Allocation Orchestration
+
+The elected coordinator is responsible for orchestrating partition allocation across the cluster. This involves:
+
+1.  **Discovering Task Lists:** The coordinator periodically queries the database to discover all active domains and task lists within its cluster.
+2.  **Calculating Allocation:** For each discovered task list, the coordinator invokes the `AllocationManager` (specifically, the `CalculateAllocation` method) to determine the optimal partition assignments based on the current cluster state and active nodes.
+3.  **Updating Assignments:** The coordinator then updates the database with the new partition assignments. This ensures that all workers have an up-to-date view of which partitions they are responsible for.
+
+This orchestration ensures that partitions are continuously balanced and reassigned as nodes join, leave, or fail, maintaining the desired distribution across the cluster.

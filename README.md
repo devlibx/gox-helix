@@ -6,6 +6,20 @@
 
 `gox-helix` is an open-source framework for building distributed, scalable, and reliable applications in Go. It is inspired by Apache Helix and Cadence, and it uses MySQL as a backend for coordination and state management, providing a robust alternative to Zookeeper.
 
+## Table of Contents
+
+- [Features](#features)
+- [Design Overview](#design-overview)
+- [Current Work Status](#current-work-status)
+- [Next Steps](#next-steps)
+- [Roadmap](#roadmap)
+- [Getting Started](#getting-started)
+- [Usage](#usage)
+- [Soak Test Example](#soak-test-example)
+- [Contributing](#contributing)
+- [Community](#community)
+- [License](#license)
+
 ## Features
 
 *   **Distributed Resource Management:** Manage and coordinate distributed resources in a cluster.
@@ -61,15 +75,26 @@ We are actively developing the core framework, focusing on robust distributed co
     *   **Leader Election:** Implements leader election using the distributed locking mechanism to ensure only one active coordinator.
     *   **Partition Allocation Orchestration:** Orchestrates partition allocation by iterating through domains and task lists, and triggering the partition rebalancing algorithm.
 
+5.  **Duplicate Partition Assignment Resolution:**
+    *   Implemented a deterministic conflict resolution mechanism for duplicate partition assignments, ensuring data consistency during coordinator churn.
+
+6.  **Soak Test Example:**
+    *   Added a comprehensive soak test example (`examples/soak_test/test_1`) demonstrating `gox-helix` usage, including cluster setup, node management, coordinator election, partition allocation, and chaos testing.
+    *   Improved soak test timing and validation with enhanced `MockCrossFunction`, `StatusReporter`, and `Validator`.
+    *   Refactored the soak test reporting system for better modularity and extensibility.
+
+7.  **Rebalancing Logic Refactoring:**
+    *   Moved the core rebalancing logic to a new `RebalanceAlgoV1` struct for improved modularity and maintainability.
+
 ## Next Steps
 
 To continue, we need to:
 
-1.  **Complete Locker Interface:** Implement the `Release` and `Renew` methods of the `Locker` interface in `pkg/common/lock/mysql/service.go`.
-2.  **Refine Coordinator Logic:** Implement the full coordinator election and failover logic using the new `Locker` and cluster management modules.
-3.  **Worker Registration and Heartbeating:** Fully integrate and refine the worker registration and heartbeating mechanisms within the cluster management module.
-4.  **Partition Allocation:** Develop the logic for dynamic partition allocation and rebalancing among active workers.
-5.  **Task Scheduling:** Implement the core task scheduling and execution framework.
+1.  **Complete Distributed Locking:** Implement the `Release` and `Renew` methods of the `Locker` interface in `pkg/common/lock/mysql/service.go`.
+2.  **Refine Cluster Coordinator:** Enhance the coordinator with full election and failover logic, and implement robust error handling and recovery mechanisms.
+3.  **Worker Integration:** Develop and integrate worker components for task execution and interaction with the cluster.
+4.  **Dynamic Partition Management:** Implement advanced dynamic partition allocation strategies, including adding/removing partitions and rebalancing.
+5.  **Task Scheduling Framework:** Develop a comprehensive task scheduling and execution framework.
 
 ## Roadmap
 
