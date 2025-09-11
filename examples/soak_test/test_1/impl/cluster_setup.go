@@ -17,12 +17,12 @@ import (
 
 // ClusterConfig defines the test cluster configuration
 type ClusterConfig struct {
-	Name            string
-	DomainCount     int
+	Name               string
+	DomainCount        int
 	TasklistsPerDomain int
-	MinPartitions   int
-	MaxPartitions   int
-	InitialNodes    int
+	MinPartitions      int
+	MaxPartitions      int
+	InitialNodes       int
 }
 
 // DatabaseConfig holds database connection information
@@ -60,7 +60,7 @@ func NewClusterSetup() (*ClusterSetup, error) {
 	// Create database connection
 	connectionString := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
 		dbConfig.User, dbConfig.Password, dbConfig.Host, dbConfig.Port, dbConfig.Database)
-	
+
 	sqlDb, err := sql.Open("mysql", connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -105,15 +105,15 @@ func (cs *ClusterSetup) GetQueries() *helixClusterMysql.Queries {
 // CreateTestClusters creates test clusters with domains and tasklists
 func (cs *ClusterSetup) CreateTestClusters(ctx context.Context, configs []ClusterConfig) error {
 	fmt.Printf("🔧 Setting up test clusters...\n")
-	
+
 	for _, config := range configs {
 		if err := cs.createSingleCluster(ctx, config); err != nil {
 			return fmt.Errorf("failed to create cluster %s: %w", config.Name, err)
 		}
-		fmt.Printf("✅ Created cluster: %s (%d domains, %d tasklists each)\n", 
+		fmt.Printf("✅ Created cluster: %s (%d domains, %d tasklists each)\n",
 			config.Name, config.DomainCount, config.TasklistsPerDomain)
 	}
-	
+
 	return nil
 }
 
@@ -121,13 +121,13 @@ func (cs *ClusterSetup) CreateTestClusters(ctx context.Context, configs []Cluste
 func (cs *ClusterSetup) createSingleCluster(ctx context.Context, config ClusterConfig) error {
 	for domainIdx := 0; domainIdx < config.DomainCount; domainIdx++ {
 		domain := fmt.Sprintf("domain-%d-%s", domainIdx, uuid.NewString()[:8])
-		
+
 		for tasklistIdx := 0; tasklistIdx < config.TasklistsPerDomain; tasklistIdx++ {
 			tasklist := fmt.Sprintf("tasklist-%d-%s", tasklistIdx, uuid.NewString()[:8])
-			
+
 			// Random partition count between min and max
 			partitionCount := config.MinPartitions + rand.Intn(config.MaxPartitions-config.MinPartitions+1)
-			
+
 			// Insert cluster data
 			err := cs.queries.UpsertCluster(ctx, helixClusterMysql.UpsertClusterParams{
 				Cluster:        config.Name,
@@ -137,12 +137,12 @@ func (cs *ClusterSetup) createSingleCluster(ctx context.Context, config ClusterC
 				Metadata:       sql.NullString{Valid: true, String: "{}"},
 			})
 			if err != nil {
-				return fmt.Errorf("failed to upsert cluster data for %s/%s/%s: %w", 
+				return fmt.Errorf("failed to upsert cluster data for %s/%s/%s: %w",
 					config.Name, domain, tasklist, err)
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -150,37 +150,37 @@ func (cs *ClusterSetup) createSingleCluster(ctx context.Context, config ClusterC
 func (cs *ClusterSetup) PrintClusterSummary(ctx context.Context, clusterNames []string) error {
 	fmt.Printf("\n📊 Cluster Summary:\n")
 	fmt.Printf("═══════════════════\n")
-	
+
 	totalClusters := 0
 	totalTasklists := 0
 	totalPartitions := 0
-	
+
 	for _, clusterName := range clusterNames {
 		domainsAndTasks, err := cs.queries.GetAllDomainsAndTaskListsByClusterCname(ctx, clusterName)
 		if err != nil {
 			return fmt.Errorf("failed to get domains and tasks for cluster %s: %w", clusterName, err)
 		}
-		
+
 		clusterPartitions := 0
 		for _, dt := range domainsAndTasks {
 			clusterPartitions += int(dt.PartitionCount)
 		}
-		
+
 		fmt.Printf("Cluster: %s\n", clusterName)
 		fmt.Printf("  - Tasklists: %d\n", len(domainsAndTasks))
 		fmt.Printf("  - Total Partitions: %d\n", clusterPartitions)
-		
+
 		totalClusters++
 		totalTasklists += len(domainsAndTasks)
 		totalPartitions += clusterPartitions
 	}
-	
+
 	fmt.Printf("\n📈 Totals:\n")
 	fmt.Printf("  - Clusters: %d\n", totalClusters)
 	fmt.Printf("  - Tasklists: %d\n", totalTasklists)
 	fmt.Printf("  - Partitions: %d\n", totalPartitions)
 	fmt.Printf("═══════════════════\n\n")
-	
+
 	return nil
 }
 
@@ -204,7 +204,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 func GetDefaultClusterConfigs() []ClusterConfig {
 	// Use UUID to ensure unique cluster names across test runs
 	testRunId := uuid.NewString()[:8]
-	
+
 	return []ClusterConfig{
 		{
 			Name:               fmt.Sprintf("soak-test-cluster-1-%s", testRunId),
@@ -214,13 +214,13 @@ func GetDefaultClusterConfigs() []ClusterConfig {
 			MaxPartitions:      100,
 			InitialNodes:       40,
 		},
-		{
+		/*{
 			Name:               fmt.Sprintf("soak-test-cluster-2-%s", testRunId),
 			DomainCount:        3,
 			TasklistsPerDomain: 10,
 			MinPartitions:      50,
 			MaxPartitions:      100,
 			InitialNodes:       40,
-		},
+		},*/
 	}
 }

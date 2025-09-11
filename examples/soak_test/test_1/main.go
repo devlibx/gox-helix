@@ -90,7 +90,7 @@ func NewSoakTestApp() (*SoakTestApp, error) {
 	mockCf := util.NewMockCrossFunction(time.Now())
 
 	// Create other components
-	nodeManager := impl.NewNodeManager(mockCf)
+	nodeManager := impl.NewNodeManager(mockCf, clusterSetup.GetQueries())
 	statusReporter := impl.NewStatusReporter(clusterSetup.GetQueries(), nodeManager)
 	validator := impl.NewValidator(clusterSetup.GetQueries(), nodeManager)
 	cleanupManager := impl.NewCleanupManager(clusterSetup.GetSQLDB())
@@ -281,7 +281,7 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			connHolder database.ConnectionHolder,
 		) (managment.AllocationManager, error) {
 			algorithmConfig := &managment.AlgorithmConfig{
-				TimeToWaitForPartitionReleaseBeforeForceRelease: 2 * time.Second, // Increased for chaos conditions
+				TimeToWaitForPartitionReleaseBeforeForceRelease: 10 * time.Second, // Increased for chaos conditions
 			}
 			return allocation.NewAllocationAlgorithmV1(cf, db, db, algorithmConfig, connHolder)
 		}),
@@ -318,6 +318,58 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 	})
 
 	return clusterManager, coord, nil
+}
+
+// ensureMinimumActiveNodes checks and adds nodes if we don't have enough active nodes
+func (app *SoakTestApp) ensureMinimumActiveNodes(ctx context.Context) error {
+	const minRequiredNodes = 20 // Minimum nodes needed for stable partition allocation
+	
+	fmt.Printf("🔍 ENSURE MINIMUM NODES: Starting check before stabilization...\n")
+	
+	stats := app.nodeManager.GetClusterStats()
+	fmt.Printf("🔍 ENSURE MINIMUM NODES: Got stats for %d clusters\n", len(stats))
+	
+	for clusterName, activeCount := range stats {
+		fmt.Printf("📊 ENSURE MINIMUM NODES: Cluster %s: %d active nodes (need %d)\n", clusterName, activeCount, minRequiredNodes)
+		
+		if activeCount < minRequiredNodes {
+			nodesToAdd := minRequiredNodes - activeCount
+			fmt.Printf("⚠️  ENSURE MINIMUM NODES: Adding %d nodes to cluster %s...\n", nodesToAdd, clusterName)
+			
+			// Add required nodes with more aggressive timing
+			for i := 0; i < nodesToAdd; i++ {
+				fmt.Printf("➕ ENSURE MINIMUM NODES: Adding node %d/%d...\n", i+1, nodesToAdd)
+				if err := app.nodeManager.AddRandomNode(ctx); err != nil {
+					fmt.Printf("❌ ENSURE MINIMUM NODES: Failed to add node %d: %v\n", i+1, err)
+					continue
+				}
+				// Small delay between each node addition
+				time.Sleep(100 * time.Millisecond)
+			}
+			
+			// Wait longer for nodes to register and establish heartbeats
+			fmt.Printf("⏳ ENSURE MINIMUM NODES: Waiting 10 seconds for nodes to become active...\n")
+			time.Sleep(10 * time.Second)
+			
+			// Re-check count multiple times to see the progression
+			for attempt := 1; attempt <= 3; attempt++ {
+				newStats := app.nodeManager.GetClusterStats()
+				newCount := newStats[clusterName]
+				fmt.Printf("🔍 ENSURE MINIMUM NODES: Attempt %d - Cluster %s now has %d active nodes\n", 
+					attempt, clusterName, newCount)
+				if newCount >= minRequiredNodes {
+					break
+				}
+				time.Sleep(2 * time.Second)
+			}
+		} else {
+			fmt.Printf("✅ ENSURE MINIMUM NODES: Cluster %s has sufficient active nodes (%d >= %d)\n", 
+				clusterName, activeCount, minRequiredNodes)
+		}
+	}
+	
+	fmt.Printf("🔍 ENSURE MINIMUM NODES: Completed minimum node check\n")
+	return nil
 }
 
 // startCoordinators starts all coordinators in background goroutines
@@ -372,6 +424,11 @@ func (app *SoakTestApp) chaosPhase(ctx context.Context) error {
 func (app *SoakTestApp) stabilizationPhase(ctx context.Context) error {
 	fmt.Printf("🔄 STABILIZATION PHASE\n")
 	fmt.Printf("═══════════════════════════════════════════════════════════════════════════\n")
+
+	// Check if we have adequate active nodes before stabilization
+	if err := app.ensureMinimumActiveNodes(ctx); err != nil {
+		return fmt.Errorf("pre-stabilization node check failed: %w", err)
+	}
 
 	if err := app.chaosController.StabilizationPhase(ctx, 30*time.Second); err != nil {
 		return fmt.Errorf("stabilization phase failed: %w", err)

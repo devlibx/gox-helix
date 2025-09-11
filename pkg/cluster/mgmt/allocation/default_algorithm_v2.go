@@ -147,7 +147,9 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 				// Handle partitions stuck in release state (force reassign)
 				if partitionInfo.AllocationStatus == managment.PartitionAllocationRequestedRelease ||
 					partitionInfo.AllocationStatus == managment.PartitionAllocationPendingRelease {
-					if partitionInfo.UpdatedTime.Add(s.AlgorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease).Before(s.Now()) {
+					// Use NormalizeDuration to handle time acceleration correctly
+					normalizedTimeout := s.NormalizeDuration(s.AlgorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease)
+					if partitionInfo.UpdatedTime.Add(normalizedTimeout).Before(s.Now()) {
 						partition.Status = managment.PartitionAllocationUnassigned
 						partition.NodeID = ""
 						continue
@@ -258,7 +260,10 @@ func (s *SimpleAllocationAlgorithm) resolveConflicts(partitionStates map[string]
 }
 
 // calculateTargetDistribution computes optimal partition distribution across active nodes
-func (s *SimpleAllocationAlgorithm) calculateTargetDistribution(taskListInfo managment.TaskListInfo, nodeStates map[string]*NodeState) map[string][]string {
+func (s *SimpleAllocationAlgorithm) calculateTargetDistribution(
+	taskListInfo managment.TaskListInfo,
+	nodeStates map[string]*NodeState,
+) map[string][]string {
 
 	// Get list of active nodes
 	activeNodes := make([]string, 0)
@@ -303,7 +308,11 @@ func (s *SimpleAllocationAlgorithm) calculateTargetDistribution(taskListInfo man
 }
 
 // performRebalancing moves partitions to achieve target distribution with minimal movement
-func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[string]*PartitionState, targetAssignments map[string][]string, nodeStates map[string]*NodeState) map[string][]string {
+func (s *SimpleAllocationAlgorithm) performRebalancing(
+	partitionStates map[string]*PartitionState,
+	targetAssignments map[string][]string,
+	nodeStates map[string]*NodeState,
+) map[string][]string {
 
 	// Create final assignment map
 	finalAssignments := make(map[string][]string)
@@ -350,7 +359,11 @@ func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[strin
 }
 
 // updateDatabase writes the final assignments to the database
-func (s *SimpleAllocationAlgorithm) updateDatabase(ctx context.Context, taskListInfo managment.TaskListInfo, finalAssignments map[string][]string) error {
+func (s *SimpleAllocationAlgorithm) updateDatabase(
+	ctx context.Context,
+	taskListInfo managment.TaskListInfo,
+	finalAssignments map[string][]string,
+) error {
 
 	for nodeID, partitionIDs := range finalAssignments {
 		// Process ALL nodes, including those with empty assignments

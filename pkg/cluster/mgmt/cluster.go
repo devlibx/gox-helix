@@ -13,9 +13,9 @@ type ClusterManagerConfig struct {
 	// NodeHeartbeatInterval defines how often a node sends a heartbeat to the cluster.
 	NodeHeartbeatInterval time.Duration `json:"node_heartbeat_interval" yaml:"node_heartbeat_interval"`
 	// Name is the name of the cluster this manager belongs to.
-	Name                  string        `json:"name" yaml:"name"`
+	Name string `json:"name" yaml:"name"`
 	// ControllerTtl defines the time-to-live for the cluster controller lock.
-	ControllerTtl         time.Duration `json:"controller_ttl" yaml:"controller_ttl"`
+	ControllerTtl time.Duration `json:"controller_ttl" yaml:"controller_ttl"`
 }
 
 // ClusterManager defines the interface for managing cluster nodes and coordinating cluster-wide operations.
@@ -42,6 +42,11 @@ type NodeRegisterRequest struct {
 // NodeRegisterResponse is the response payload after registering a new node.
 type NodeRegisterResponse struct {
 	NodeId string
+	Ch     chan *NodeRegisterChannel
+}
+
+type NodeRegisterChannel struct {
+	ErrorReregistrationNeeded bool
 }
 
 // NewHelixDatasourceUsingSqlDb creates a new helixClusterMysql.Querier and helixClusterMysql.Queries

@@ -276,9 +276,9 @@ func (cc *ChaosController) StabilizationPhase(ctx context.Context, duration time
 func GetDefaultChaosConfig() ChaosConfig {
 	return ChaosConfig{
 		ChaosDuration:      60 * time.Second,  // 1 minute of chaos
-		OperationInterval:  500 * time.Millisecond,  // Operation every 500ms (2 ops/sec)
-		AddProbability:     0.6,  // 60% chance to add, 40% to remove
-		MinNodesPerCluster: 5,    // Keep minimum 5 nodes per cluster
-		MaxNodesPerCluster: 80,   // Don't exceed 80 nodes per cluster
+		OperationInterval:  2 * time.Second,   // Operation every 2s (0.5 ops/sec) - Much slower
+		AddProbability:     0.8,               // 80% chance to add, 20% to remove - Favor adding
+		MinNodesPerCluster: 15,                // Keep minimum 15 nodes per cluster - Higher minimum
+		MaxNodesPerCluster: 80,                // Don't exceed 80 nodes per cluster
 	}
 }

@@ -137,7 +137,9 @@ func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managmen
 			// We just mark them unsigned if they are stuck for long time
 			if partitionInfo.AllocationStatus == managment.PartitionAllocationRequestedRelease ||
 				partitionInfo.AllocationStatus == managment.PartitionAllocationPendingRelease {
-				if partitionInfo.UpdatedTime.Add(a.algorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease).Before(a.Now()) {
+				// Use NormalizeDuration to handle time acceleration correctly
+				normalizedTimeout := a.NormalizeDuration(a.algorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease)
+				if partitionInfo.UpdatedTime.Add(normalizedTimeout).Before(a.Now()) {
 					partition.Status = managment.PartitionAllocationUnassigned
 					partition.NodeID = ""
 				} else {

@@ -5,39 +5,32 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
-	"time"
 
 	"github.com/devlibx/gox-base/v2"
 	managment "github.com/devlibx/gox-helix/pkg/cluster/mgmt"
+	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 )
 
-// NodeInfo tracks information about a registered node
-type NodeInfo struct {
-	ID          string
-	ClusterName string
-	RegisteredAt time.Time
-	Active      bool
-}
-
-// ClusterNodes tracks all nodes for a specific cluster
-type ClusterNodes struct {
+// ClusterInfo holds cluster manager and database connection
+type ClusterInfo struct {
 	clusterManager managment.ClusterManager
-	nodes          map[string]*NodeInfo
-	mutex          sync.RWMutex
+	clusterName    string
 }
 
-// NodeManager manages node lifecycle across multiple clusters
+// NodeManager manages node lifecycle across multiple clusters using database as source of truth
 type NodeManager struct {
-	clusters map[string]*ClusterNodes
+	clusters map[string]*ClusterInfo
 	mutex    sync.RWMutex
 	cf       gox.CrossFunction
+	db       *helixClusterMysql.Queries // Database connection for querying active nodes
 }
 
 // NewNodeManager creates a new node manager
-func NewNodeManager(cf gox.CrossFunction) *NodeManager {
+func NewNodeManager(cf gox.CrossFunction, db *helixClusterMysql.Queries) *NodeManager {
 	return &NodeManager{
-		clusters: make(map[string]*ClusterNodes),
+		clusters: make(map[string]*ClusterInfo),
 		cf:       cf,
+		db:       db,
 	}
 }
 
@@ -46,9 +39,9 @@ func (nm *NodeManager) RegisterCluster(clusterName string, clusterManager managm
 	nm.mutex.Lock()
 	defer nm.mutex.Unlock()
 	
-	nm.clusters[clusterName] = &ClusterNodes{
+	nm.clusters[clusterName] = &ClusterInfo{
 		clusterManager: clusterManager,
-		nodes:         make(map[string]*NodeInfo),
+		clusterName:    clusterName,
 	}
 }
 
@@ -59,8 +52,8 @@ func (nm *NodeManager) RegisterInitialNodes(ctx context.Context, nodeCount int) 
 	
 	fmt.Printf("🚀 Registering %d initial nodes per cluster...\n", nodeCount)
 	
-	for clusterName, clusterNodes := range nm.clusters {
-		if err := nm.registerNodesForCluster(ctx, clusterName, clusterNodes, nodeCount); err != nil {
+	for clusterName, clusterInfo := range nm.clusters {
+		if err := nm.registerNodesForCluster(ctx, clusterName, clusterInfo, nodeCount); err != nil {
 			return fmt.Errorf("failed to register initial nodes for cluster %s: %w", clusterName, err)
 		}
 		fmt.Printf("✅ Registered %d nodes for cluster: %s\n", nodeCount, clusterName)
@@ -70,28 +63,17 @@ func (nm *NodeManager) RegisterInitialNodes(ctx context.Context, nodeCount int) 
 }
 
 // registerNodesForCluster registers nodes for a specific cluster
-func (nm *NodeManager) registerNodesForCluster(ctx context.Context, clusterName string, clusterNodes *ClusterNodes, count int) error {
-	clusterNodes.mutex.Lock()
-	defer clusterNodes.mutex.Unlock()
-	
+func (nm *NodeManager) registerNodesForCluster(ctx context.Context, clusterName string, clusterInfo *ClusterInfo, count int) error {
 	for i := 0; i < count; i++ {
 		request := managment.NodeRegisterRequest{
 			Cluster: clusterName,
 		}
 		
-		response, err := clusterNodes.clusterManager.RegisterNode(ctx, request)
+		_, err := clusterInfo.clusterManager.RegisterNode(ctx, request)
 		if err != nil {
 			return fmt.Errorf("failed to register node %d: %w", i, err)
 		}
-		
-		nodeInfo := &NodeInfo{
-			ID:          response.NodeId,
-			ClusterName: clusterName,
-			RegisteredAt: time.Now(),
-			Active:      true,
-		}
-		
-		clusterNodes.nodes[response.NodeId] = nodeInfo
+		// No local tracking - database is the source of truth
 	}
 	
 	return nil
@@ -112,33 +94,27 @@ func (nm *NodeManager) AddRandomNode(ctx context.Context) error {
 		clusterNames = append(clusterNames, name)
 	}
 	selectedCluster := clusterNames[rand.Intn(len(clusterNames))]
-	clusterNodes := nm.clusters[selectedCluster]
+	clusterInfo := nm.clusters[selectedCluster]
 	
 	// Register new node
 	request := managment.NodeRegisterRequest{
 		Cluster: selectedCluster,
 	}
 	
-	response, err := clusterNodes.clusterManager.RegisterNode(ctx, request)
+	response, err := clusterInfo.clusterManager.RegisterNode(ctx, request)
 	if err != nil {
 		return fmt.Errorf("failed to add random node to cluster %s: %w", selectedCluster, err)
 	}
 	
-	// Track the new node
-	clusterNodes.mutex.Lock()
-	defer clusterNodes.mutex.Unlock()
-	
-	nodeInfo := &NodeInfo{
-		ID:          response.NodeId,
-		ClusterName: selectedCluster,
-		RegisteredAt: time.Now(),
-		Active:      true,
+	// Query current active node count from database for logging
+	activeNodes, err := nm.db.GetActiveNodes(ctx, selectedCluster)
+	if err != nil {
+		fmt.Printf("➕ Added node %s to cluster %s (count query failed: %v)\n", 
+			response.NodeId[:8], selectedCluster, err)
+	} else {
+		fmt.Printf("➕ Added node %s to cluster %s (total: %d)\n", 
+			response.NodeId[:8], selectedCluster, len(activeNodes))
 	}
-	
-	clusterNodes.nodes[response.NodeId] = nodeInfo
-	
-	fmt.Printf("➕ Added node %s to cluster %s (total: %d)\n", 
-		response.NodeId[:8], selectedCluster, len(clusterNodes.nodes))
 	
 	return nil
 }
@@ -152,15 +128,16 @@ func (nm *NodeManager) RemoveRandomNode(ctx context.Context) error {
 		return fmt.Errorf("no clusters registered")
 	}
 	
-	// Find clusters with active nodes
+	// Find clusters with active nodes by querying database
 	clustersWithNodes := make([]string, 0)
-	for clusterName, clusterNodes := range nm.clusters {
-		clusterNodes.mutex.RLock()
-		activeCount := nm.countActiveNodes(clusterNodes.nodes)
-		clusterNodes.mutex.RUnlock()
+	for clusterName := range nm.clusters {
+		activeNodes, err := nm.db.GetActiveNodes(ctx, clusterName)
+		if err != nil {
+			continue // Skip cluster if can't query active nodes
+		}
 		
 		// Keep minimum of 5 nodes per cluster to avoid complete emptiness
-		if activeCount > 5 {
+		if len(activeNodes) > 5 {
 			clustersWithNodes = append(clustersWithNodes, clusterName)
 		}
 	}
@@ -171,17 +148,11 @@ func (nm *NodeManager) RemoveRandomNode(ctx context.Context) error {
 	
 	// Select random cluster with removable nodes
 	selectedCluster := clustersWithNodes[rand.Intn(len(clustersWithNodes))]
-	clusterNodes := nm.clusters[selectedCluster]
 	
-	clusterNodes.mutex.Lock()
-	defer clusterNodes.mutex.Unlock()
-	
-	// Find random active node
-	activeNodes := make([]*NodeInfo, 0)
-	for _, node := range clusterNodes.nodes {
-		if node.Active {
-			activeNodes = append(activeNodes, node)
-		}
+	// Get active nodes from database
+	activeNodes, err := nm.db.GetActiveNodes(ctx, selectedCluster)
+	if err != nil {
+		return fmt.Errorf("failed to get active nodes for cluster %s: %w", selectedCluster, err)
 	}
 	
 	if len(activeNodes) == 0 {
@@ -191,41 +162,38 @@ func (nm *NodeManager) RemoveRandomNode(ctx context.Context) error {
 	// Select random node to remove
 	nodeToRemove := activeNodes[rand.Intn(len(activeNodes))]
 	
-	// Deregister the node (mark as inactive in database)
-	// Note: We simulate node removal by stopping the node's heartbeat
-	// The cluster manager's background process will mark it inactive
-	nodeToRemove.Active = false
+	// Deregister the node directly via database (marks inactive)
+	err = nm.db.DeregisterNode(ctx, helixClusterMysql.DeregisterNodeParams{
+		ClusterName: selectedCluster,
+		NodeUuid:    nodeToRemove.NodeUuid,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to deregister node %s from cluster %s: %w", nodeToRemove.NodeUuid[:8], selectedCluster, err)
+	}
 	
 	fmt.Printf("➖ Removed node %s from cluster %s (remaining: %d)\n", 
-		nodeToRemove.ID[:8], selectedCluster, nm.countActiveNodes(clusterNodes.nodes)-1)
+		nodeToRemove.NodeUuid[:8], selectedCluster, len(activeNodes)-1)
 	
 	return nil
 }
 
-// GetClusterStats returns statistics for all clusters
+// GetClusterStats returns statistics for all clusters by querying database
 func (nm *NodeManager) GetClusterStats() map[string]int {
 	nm.mutex.RLock()
 	defer nm.mutex.RUnlock()
 	
 	stats := make(map[string]int)
-	for clusterName, clusterNodes := range nm.clusters {
-		clusterNodes.mutex.RLock()
-		stats[clusterName] = nm.countActiveNodes(clusterNodes.nodes)
-		clusterNodes.mutex.RUnlock()
+	for clusterName := range nm.clusters {
+		// Query database for active nodes count
+		activeNodes, err := nm.db.GetActiveNodes(context.Background(), clusterName)
+		if err != nil {
+			stats[clusterName] = 0 // Default to 0 if query fails
+		} else {
+			stats[clusterName] = len(activeNodes)
+		}
 	}
 	
 	return stats
-}
-
-// countActiveNodes counts active nodes in a node map (must hold mutex)
-func (nm *NodeManager) countActiveNodes(nodes map[string]*NodeInfo) int {
-	count := 0
-	for _, node := range nodes {
-		if node.Active {
-			count++
-		}
-	}
-	return count
 }
 
 // GetTotalNodes returns total active nodes across all clusters
@@ -251,22 +219,10 @@ func (nm *NodeManager) PrintNodeStats() {
 	fmt.Printf("  - Total: %d nodes\n", total)
 }
 
-// CleanupInactiveNodes removes inactive node records (for cleanup)
+// CleanupInactiveNodes is no longer needed since we don't maintain local state
+// Database cleanup is handled by cluster manager background processes
 func (nm *NodeManager) CleanupInactiveNodes() {
-	nm.mutex.Lock()
-	defer nm.mutex.Unlock()
-	
-	for clusterName, clusterNodes := range nm.clusters {
-		clusterNodes.mutex.Lock()
-		for nodeID, node := range clusterNodes.nodes {
-			if !node.Active {
-				delete(clusterNodes.nodes, nodeID)
-			}
-		}
-		clusterNodes.mutex.Unlock()
-		
-		fmt.Printf("🧹 Cleaned up inactive nodes for cluster: %s\n", clusterName)
-	}
+	fmt.Printf("🧹 Cleanup inactive nodes - delegated to cluster manager background processes\n")
 }
 
 // Shutdown gracefully shuts down all node operations
@@ -276,15 +232,8 @@ func (nm *NodeManager) Shutdown() {
 	
 	fmt.Printf("🛑 Shutting down node manager...\n")
 	
-	for clusterName, clusterNodes := range nm.clusters {
-		clusterNodes.mutex.Lock()
-		
-		// Mark all nodes as inactive
-		for _, node := range clusterNodes.nodes {
-			node.Active = false
-		}
-		
-		clusterNodes.mutex.Unlock()
+	// No local state to clean up - cluster managers handle node lifecycle
+	for clusterName := range nm.clusters {
 		fmt.Printf("✅ Shutdown nodes for cluster: %s\n", clusterName)
 	}
 }

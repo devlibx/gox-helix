@@ -62,6 +62,7 @@ func NewClusterManager(
 	if config.ControllerTtl.Milliseconds() == 0 {
 		config.ControllerTtl = 10 * time.Second
 	}
+	config.ControllerTtl = cf.NormalizeDuration(config.ControllerTtl)
 
 	// Start inactive node clean-up worker thread (mark nodes inactive if they have not give successful HB)
 	go func() {
@@ -118,6 +119,8 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 		Status:        helixClusterMysql.NodeStatusActive,
 	}
 
+	ch := make(chan *NodeRegisterChannel, 2)
+
 	// Start
 	go func() {
 		runLoop := true
@@ -128,6 +131,16 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 			}
 
 			if err := c.startHeartbeatForNode(ctx, c.nodes[nodeId]); errors2.Is(err, errorReregistrationNeeded) {
+
+				if true {
+					c.nodeMutex.Lock()
+					delete(c.nodes, nodeId)
+					c.nodeMutex.Unlock()
+					
+					ch <- &NodeRegisterChannel{ErrorReregistrationNeeded: true}
+					return
+				}
+
 				c.nodeMutex.Lock()
 				delete(c.nodes, nodeId)
 				c.nodeMutex.Unlock()
@@ -141,12 +154,13 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 				}
 				runLoop = false
 			}
+
 			runLoop = false
 		}
 
 	}()
 
-	return &NodeRegisterResponse{NodeId: nodeId}, nil
+	return &NodeRegisterResponse{NodeId: nodeId, Ch: ch}, nil
 }
 
 func (c *clusterManagerImpl) GetActiveNodes(ctx context.Context) ([]Node, error) {
@@ -195,8 +209,8 @@ func (c *clusterManagerImpl) startHeartbeatForNode(ctx context.Context, node *No
 			slog.Debug("node heartbeat updated", slog.String("cluster", c.Name), slog.String("node", node.Id))
 		}
 
-		// Sleet between each HB update
-		c.Sleep(3 * time.Second)
+		// Sleep between each HB update (normalized for time acceleration)
+		c.Sleep(c.NormalizeDuration(3 * time.Second))
 	}
 
 	return nil
@@ -223,7 +237,7 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 		}
 
 		// Remove inactive nodes from cluster (nodes not given HB for last 10 sec will be marked inactive)
-		lastHbTime := c.Now().Add(-10 * time.Second)
+		lastHbTime := c.Now().Add(c.NormalizeDuration(-10 * time.Second))
 		if err := c.dbInterface.MarkInactiveNodes(ctx, helixClusterMysql.MarkInactiveNodesParams{
 			ClusterName: c.Name,
 			LastHbTime:  lastHbTime,
@@ -233,7 +247,7 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 			slog.Debug("marked inactive nodes", slog.String("cluster", c.Name))
 		}
 
-		// Sleep for next clean-up to mark nodes inactive
-		c.Sleep(1 * time.Second)
+		// Sleep for next clean-up to mark nodes inactive (normalized for time acceleration)
+		c.Sleep(c.NormalizeDuration(1 * time.Second))
 	}
 }

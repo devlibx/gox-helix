@@ -115,21 +115,25 @@ WHERE node_id = ?
   AND status = 1;
 
 -- name: GetAllocationsForTasklist :many
-SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
-       cluster,
-       domain,
-       tasklist,
-       node_id,
-       status,
-       partition_info,
-       metadata,
-       created_at,
-       updated_at
-FROM helix_allocation
-WHERE cluster = ?
-  AND domain = ?
-  AND tasklist = ?
-  AND status = 1;
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ 
+       ha.id,
+       ha.cluster,
+       ha.domain,
+       ha.tasklist,
+       ha.node_id,
+       ha.status,
+       ha.partition_info,
+       ha.metadata,
+       ha.created_at,
+       ha.updated_at
+FROM helix_allocation ha
+INNER JOIN helix_nodes hn ON ha.node_id = hn.node_uuid 
+                         AND ha.cluster = hn.cluster_name
+WHERE ha.cluster = ?
+  AND ha.domain = ?
+  AND ha.tasklist = ?
+  AND ha.status = 1
+  AND hn.status = 1;
 
 -- name: MarkNodeInactive :exec
 UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation

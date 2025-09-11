@@ -5,8 +5,8 @@ github.com/benbjohnson/clock v1.3.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZx
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/devlibx/gox-base/v2 v2.0.28 h1:nVVfI0OOMBU+s7MQninRek9PjiFGR4afYFfGPSNz2oc=
-github.com/devlibx/gox-base/v2 v2.0.28/go.mod h1:kxDhavdB4UoMfIFXA43AHrt2YYTLxE218w2o8iAEy/g=
+github.com/devlibx/gox-base/v2 v2.0.29 h1:OW1uox0Ra7D4yRu/fsdNo7kgGwRYea3buLBZL3sSq2I=
+github.com/devlibx/gox-base/v2 v2.0.29/go.mod h1:kxDhavdB4UoMfIFXA43AHrt2YYTLxE218w2o8iAEy/g=
 github.com/fatih/structs v1.1.0 h1:Q7juDM0QtcnhCpeyLGQKyg4TOIghuNXrkL32pHAUMxo=
 github.com/fatih/structs v1.1.0/go.mod h1:9NiDSp5zOcgEDl+j00MP/WkGVPOlPRLejGD8Ga6PJ7M=
 github.com/go-sql-driver/mysql v1.9.3 h1:U/N249h2WzJ3Ukj8SowVFjdtZKfu9vlLZxjPXV1aweo=

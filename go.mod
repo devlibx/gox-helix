@@ -3,7 +3,7 @@ module github.com/devlibx/gox-helix
 go 1.23.1
 
 require (
-	github.com/devlibx/gox-base/v2 v2.0.28
+	github.com/devlibx/gox-base/v2 v2.0.29
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/uuid v1.2.0
 	github.com/stretchr/testify v1.9.0
