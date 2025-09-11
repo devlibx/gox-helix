@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"time"
 
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 	helixLock "github.com/devlibx/gox-helix/pkg/common/lock/mysql"
 	"github.com/devlibx/gox-helix/pkg/util"
+	"github.com/google/uuid"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -120,10 +120,10 @@ func (cs *ClusterSetup) CreateTestClusters(ctx context.Context, configs []Cluste
 // createSingleCluster creates a single cluster with its domains and tasklists
 func (cs *ClusterSetup) createSingleCluster(ctx context.Context, config ClusterConfig) error {
 	for domainIdx := 0; domainIdx < config.DomainCount; domainIdx++ {
-		domain := fmt.Sprintf("domain-%d", domainIdx)
+		domain := fmt.Sprintf("domain-%d-%s", domainIdx, uuid.NewString()[:8])
 		
 		for tasklistIdx := 0; tasklistIdx < config.TasklistsPerDomain; tasklistIdx++ {
-			tasklist := fmt.Sprintf("tasklist-%d", tasklistIdx)
+			tasklist := fmt.Sprintf("tasklist-%d-%s", tasklistIdx, uuid.NewString()[:8])
 			
 			// Random partition count between min and max
 			partitionCount := config.MinPartitions + rand.Intn(config.MaxPartitions-config.MinPartitions+1)
@@ -202,12 +202,12 @@ func getEnvOrDefault(key, defaultValue string) string {
 
 // GetDefaultClusterConfigs returns the default cluster configurations for the soak test
 func GetDefaultClusterConfigs() []ClusterConfig {
-	// Use timestamp to ensure unique cluster names across test runs
-	timestamp := time.Now().Format("20060102-150405")
+	// Use UUID to ensure unique cluster names across test runs
+	testRunId := uuid.NewString()[:8]
 	
 	return []ClusterConfig{
 		{
-			Name:               fmt.Sprintf("soak-test-cluster-1-%s", timestamp),
+			Name:               fmt.Sprintf("soak-test-cluster-1-%s", testRunId),
 			DomainCount:        3,
 			TasklistsPerDomain: 10,
 			MinPartitions:      50,
@@ -215,7 +215,7 @@ func GetDefaultClusterConfigs() []ClusterConfig {
 			InitialNodes:       40,
 		},
 		{
-			Name:               fmt.Sprintf("soak-test-cluster-2-%s", timestamp),
+			Name:               fmt.Sprintf("soak-test-cluster-2-%s", testRunId),
 			DomainCount:        3,
 			TasklistsPerDomain: 10,
 			MinPartitions:      50,

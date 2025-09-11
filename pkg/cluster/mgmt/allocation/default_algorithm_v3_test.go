@@ -301,23 +301,24 @@ func TestStableClusterValidation(t *testing.T) {
 		
 		distributions, result := algorithm.calculateTargetDistribution(taskListInfo, partitionInfos, nodeStates)
 		
-		// In V3 algorithm, node1 will have:
-		// - 2 assigned partitions (within capacity)
-		// - 2 release partitions (marked for release but still on node1)
-		// Node2 will have:
-		// - 2 placeholder partitions (for the ones being released by node1)
+		// In V3 algorithm:
+		// Node1 will have: 2 assigned + 2 release partitions (4 total in final result)
+		// Node2 will have: 0 partitions in final result (placeholders are internal-only)
 		assert.Len(t, result["node1"], 4, "Node1 should have 4 partitions (2 assigned + 2 release)")
-		assert.Len(t, result["node2"], 2, "Node2 should have 2 partitions (placeholders)") 
+		assert.Len(t, result["node2"], 0, "Node2 should have 0 partitions in final result (placeholders not persisted)") 
 		
-		// Verify that some partitions are marked for release on node1
+		// Verify internal algorithm state has correct placeholder distribution
 		node1Distribution := distributions["node1"]
+		node2Distribution := distributions["node2"]
+		
+		// Check that node1 has some release partitions
 		hasReleasePartitions := len(node1Distribution.partitionWithReleaseState) > 0
+		assert.True(t, hasReleasePartitions, "Node1 should have some release partitions")
 		
 		if hasReleasePartitions {
-			// If there are release partitions, verify placeholders exist elsewhere
-			node2Distribution := distributions["node2"]
+			// Verify node2 has placeholders internally (for capacity calculation)
 			assert.True(t, len(node2Distribution.partitionWithPlaceholderState) > 0, 
-				"Node2 should have placeholders for partitions being released by node1")
+				"Node2 should have internal placeholders for partitions being released by node1")
 		}
 	})
 }

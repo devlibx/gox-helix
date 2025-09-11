@@ -14,6 +14,7 @@ import (
 	"github.com/devlibx/gox-helix/pkg/cluster/mgmt/allocation"
 	coordinator "github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
+	"github.com/devlibx/gox-helix/pkg/common/database"
 	"github.com/devlibx/gox-helix/pkg/common/lock"
 	helixLock "github.com/devlibx/gox-helix/pkg/common/lock/mysql"
 	"github.com/devlibx/gox-helix/pkg/util"
@@ -249,6 +250,11 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			return helixClusterMysql.New(sqlDb)
 		}),
 		
+		// Database connection holder for V3 algorithm
+		fx.Provide(func(sqlDb *sql.DB) database.ConnectionHolder {
+			return database.NewConnectionHolder(sqlDb)
+		}),
+		
 		// Locker service
 		fx.Provide(func(cf gox.CrossFunction, config *helixLock.MySqlConfig) (lock.Locker, error) {
 			return helixLock.NewHelixLockMySQLService(cf, config)
@@ -268,15 +274,16 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			return managment.NewClusterManager(cf, config, db, locker)
 		}),
 		
-		// Allocation manager (using simplified Algorithm as AllocationManager)
+		// Allocation manager (using V3 Algorithm - stable cluster with cross-node placeholders)
 		fx.Provide(func(
 			cf gox.CrossFunction,
 			db *helixClusterMysql.Queries,
+			connHolder database.ConnectionHolder,
 		) (managment.AllocationManager, error) {
 			algorithmConfig := &managment.AlgorithmConfig{
 				TimeToWaitForPartitionReleaseBeforeForceRelease: 10 * time.Second,
 			}
-			return allocation.NewSimpleAllocationAlgorithm(cf, db, algorithmConfig)
+			return allocation.NewAllocationAlgorithmV1(cf, db, db, algorithmConfig, connHolder)
 		}),
 		
 		// Coordinator

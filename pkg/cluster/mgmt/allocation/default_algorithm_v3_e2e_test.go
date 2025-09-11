@@ -318,18 +318,17 @@ func (h *V3AlgorithmE2ETestHelper) validateStableCluster(t *testing.T, expectedN
 	}
 	assert.Equal(t, 0, duplicatePartitions, "No partition should be assigned to multiple nodes")
 	
-	// **STABLE CLUSTER PROPERTY 3**: Each release partition must have placeholder on different node
-	for partitionId, releaseNodeId := range releasePartitions {
-		placeholderNodeId, hasPlaceholder := placeholderPartitions[partitionId]
-		assert.True(t, hasPlaceholder, "Release partition %s must have placeholder elsewhere", partitionId)
-		if hasPlaceholder {
-			assert.NotEqual(t, releaseNodeId, placeholderNodeId, 
-				"Partition %s placeholder must be on different node than release", partitionId)
-		}
-	}
+	// **STABLE CLUSTER PROPERTY 3**: No placeholder partitions should exist in database
+	// Placeholders are internal-only for capacity calculation, never persisted
+	assert.Empty(t, placeholderPartitions, "Database should not contain any placeholder partitions")
 	
-	// **STABLE CLUSTER PROPERTY 4**: Capacity trend toward balance (V3 doesn't guarantee perfect balance in single run)
-	// V3 creates stable cluster by ensuring all partitions allocated and release->placeholder relationships
+	// **STABLE CLUSTER PROPERTY 4**: All partitions must be accounted for (assigned or in release process)
+	totalAccountedPartitions := len(assignedPartitions) + len(releasePartitions)
+	assert.Equal(t, expectedPartitionCount, totalAccountedPartitions, 
+		"All partitions must be either assigned or in release process")
+	
+	// **STABLE CLUSTER PROPERTY 5**: Capacity trend toward balance (V3 doesn't guarantee perfect balance in single run)
+	// V3 creates stable cluster by ensuring all partitions allocated (assigned or release state)
 	// Perfect balance happens over multiple algorithm runs as partitions actually migrate
 	expectedPerNode := expectedPartitionCount / len(expectedNodes)
 	
@@ -347,7 +346,8 @@ func (h *V3AlgorithmE2ETestHelper) validateStableCluster(t *testing.T, expectedN
 	t.Logf("✅ STABLE CLUSTER VALIDATED:")
 	t.Logf("   - All %d partitions allocated", len(allUniquePartitions))
 	t.Logf("   - No duplicate assignments: %d duplicates found", duplicatePartitions)
-	t.Logf("   - Release partitions have placeholders: %d release -> %d placeholder", len(releasePartitions), len(placeholderPartitions))
+	t.Logf("   - Partitions: %d assigned, %d in release process", len(assignedPartitions), len(releasePartitions))
+	t.Logf("   - No placeholder entries in database (internal-only)")
 	t.Logf("   - Balanced distribution across %d nodes", len(expectedNodes))
 }
 

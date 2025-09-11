@@ -47,7 +47,7 @@ func (a *AlgorithmV1) CalculateAllocation(ctx context.Context, taskListInfo mana
 
 	// Step 2 - get new distribution
 	_, newAssignments := a.calculateTargetDistribution(taskListInfo, partitionInfos, nodeStates)
-	
+
 	// Step 3 - atomically update database with new assignments
 	err = a.updateDatabase(ctx, taskListInfo, newAssignments)
 	if err != nil {
@@ -129,7 +129,7 @@ func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managmen
 					partition.NodeID = ""
 				} else {
 					partition.Status = partitionInfo.AllocationStatus
-					partition.NodeID = partitionInfo.PartitionId
+					partition.NodeID = nodeID
 				}
 			} else if partitionInfo.AllocationStatus == managment.PartitionAllocationAssigned {
 				partition.NodeID = nodeID
@@ -253,9 +253,9 @@ func (d *nodeDistribution) getFinalResult() []*PartitionState {
 	for _, nd := range d.partitionWithReleaseState {
 		result = append(result, nd)
 	}
-	for _, nd := range d.partitionWithPlaceholderState {
-		result = append(result, nd)
-	}
+	// IMPORTANT: Do NOT include placeholders in final result
+	// Placeholders are for internal capacity calculation only
+	// They should never be persisted to database
 	return result
 }
 
@@ -353,16 +353,16 @@ func (d *nodeDistribution) tryToAllocatePhase2(pi *PartitionState, nodeId string
 
 // updateDatabase writes the final assignments to the database using atomic transactions
 func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment.TaskListInfo, newAssignments map[string][]*PartitionState) error {
-	
+
 	// Get database connection from holder
 	db := a.databaseConnectionHolder.GetHelixMasterDbConnection()
-	
+
 	// Begin transaction
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return errors.Wrap(err, "failed to begin transaction")
 	}
-	
+
 	defer func() {
 		if err != nil {
 			tx.Rollback()
@@ -370,10 +370,10 @@ func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment
 			tx.Commit()
 		}
 	}()
-	
+
 	// Create transaction-aware queries using SQLC pattern
 	qtx := a.dbInterfaceWithTxnSupport.WithTx(tx)
-	
+
 	// Update all nodes within transaction
 	for nodeID, partitions := range newAssignments {
 		err = a.updateNodeAllocation(ctx, qtx, taskListInfo, nodeID, partitions)
@@ -381,13 +381,13 @@ func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment
 			return errors.Wrap(err, "failed to update allocation for node "+nodeID)
 		}
 	}
-	
+
 	return nil
 }
 
 // updateNodeAllocation updates the allocation for a single node within a transaction
 func (a *AlgorithmV1) updateNodeAllocation(ctx context.Context, qtx *helixClusterMysql.Queries, taskListInfo managment.TaskListInfo, nodeID string, partitions []*PartitionState) error {
-	
+
 	// Convert V3 PartitionState to database format
 	allocation := &managment.Allocation{
 		Cluster:                  taskListInfo.Cluster,
@@ -396,23 +396,23 @@ func (a *AlgorithmV1) updateNodeAllocation(ctx context.Context, qtx *helixCluste
 		NodeId:                   nodeID,
 		PartitionAllocationInfos: make([]managment.PartitionAllocationInfo, 0, len(partitions)),
 	}
-	
+
 	// Convert each PartitionState to PartitionAllocationInfo
 	for _, partition := range partitions {
-		allocation.PartitionAllocationInfos = append(allocation.PartitionAllocationInfos, 
+		allocation.PartitionAllocationInfos = append(allocation.PartitionAllocationInfos,
 			managment.PartitionAllocationInfo{
 				PartitionId:      partition.PartitionID,
-				AllocationStatus: partition.Status, // Preserves assigned/request_release/pending_release
+				AllocationStatus: partition.Status, // Only assigned/request_release/pending_release (no placeholders reach here)
 				UpdatedTime:      partition.UpdatedTime,
 			})
 	}
-	
+
 	// Serialize to JSON
 	allocationJSON, err := goxJsonUtils.ObjectToString(allocation)
 	if err != nil {
 		return errors.Wrap(err, "failed to serialize allocation")
 	}
-	
+
 	// Use transaction-aware queries for atomic update
 	return qtx.UpsertAllocation(ctx, helixClusterMysql.UpsertAllocationParams{
 		Cluster:       taskListInfo.Cluster,
