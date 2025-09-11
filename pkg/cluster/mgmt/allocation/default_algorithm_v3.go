@@ -10,6 +10,7 @@ import (
 	managment "github.com/devlibx/gox-helix/pkg/cluster/mgmt"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 	"github.com/devlibx/gox-helix/pkg/common/database"
+	"log/slog"
 )
 
 type AlgorithmV1 struct {
@@ -18,6 +19,7 @@ type AlgorithmV1 struct {
 	dbInterfaceWithTxnSupport *helixClusterMysql.Queries
 	algorithmConfig           *managment.AlgorithmConfig
 	databaseConnectionHolder  database.ConnectionHolder
+	clusterManager            managment.ClusterManager
 }
 
 // NewAllocationAlgorithmV1 creates a new simplified allocation algorithm
@@ -27,6 +29,7 @@ func NewAllocationAlgorithmV1(
 	clusterDbInterfaceWithTxnSupport *helixClusterMysql.Queries,
 	algorithmConfig *managment.AlgorithmConfig,
 	databaseConnectionHolder database.ConnectionHolder,
+	clusterManager managment.ClusterManager,
 ) (managment.Algorithm, error) {
 	return &AlgorithmV1{
 		CrossFunction:             cf,
@@ -34,6 +37,7 @@ func NewAllocationAlgorithmV1(
 		dbInterfaceWithTxnSupport: clusterDbInterfaceWithTxnSupport,
 		algorithmConfig:           algorithmConfig,
 		databaseConnectionHolder:  databaseConnectionHolder,
+		clusterManager:            clusterManager,
 	}, nil
 }
 
@@ -53,7 +57,17 @@ func (a *AlgorithmV1) CalculateAllocation(ctx context.Context, taskListInfo mana
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to update database")
 	}
-	
+
+	/*if err := a.dbInterface.MarkAllocationsInactiveForInactiveNodes(
+		ctx,
+		helixClusterMysql.MarkAllocationsInactiveForInactiveNodesParams{
+			Cluster:  taskListInfo.Cluster,
+			Domain:   taskListInfo.Domain,
+			Tasklist: taskListInfo.TaskList,
+		}); err != nil {
+		slog.Warn("failed to remove allocation for inactive node", slog.String("cluster", taskListInfo.Cluster), slog.String("domain", taskListInfo.Domain), slog.String("tasklist", taskListInfo.TaskList), slog.String("error", err.Error()))
+	}*/
+
 	return &managment.AllocationResponse{}, nil
 }
 
@@ -404,6 +418,25 @@ func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment
 		}
 	}
 
+	// Also remove bad allocations i.e. allocation where nodes are inactive
+	a.removeAllocationWithInactiveNode(ctx, qtx, taskListInfo)
+
+	// Validate coordinator still holds the lock before committing transaction
+	// This prevents stale coordinators from committing conflicting allocation updates
+	if !a.coordinatorStillHasLock(ctx) {
+		err = errors.New("coordinator lock lost during allocation update - rollback transaction")
+		slog.Warn("coordinator lock lost during allocation update - rolling back transaction",
+			slog.String("cluster", taskListInfo.Cluster),
+			slog.String("domain", taskListInfo.Domain),
+			slog.String("tasklist", taskListInfo.TaskList))
+		return err
+	}
+
+	slog.Debug("coordinator lock validated before commit - proceeding with allocation update",
+		slog.String("cluster", taskListInfo.Cluster),
+		slog.String("domain", taskListInfo.Domain),
+		slog.String("tasklist", taskListInfo.TaskList))
+
 	return nil
 }
 
@@ -444,4 +477,27 @@ func (a *AlgorithmV1) updateNodeAllocation(ctx context.Context, qtx *helixCluste
 		PartitionInfo: allocationJSON,
 		Metadata:      sql.NullString{Valid: true, String: "{}"},
 	})
+}
+
+func (a *AlgorithmV1) removeAllocationWithInactiveNode(ctx context.Context, qtx *helixClusterMysql.Queries, taskListInfo managment.TaskListInfo) {
+	if err := qtx.MarkAllocationsInactiveForInactiveNodes(
+		ctx,
+		helixClusterMysql.MarkAllocationsInactiveForInactiveNodesParams{
+			Cluster:  taskListInfo.Cluster,
+			Domain:   taskListInfo.Domain,
+			Tasklist: taskListInfo.TaskList,
+		}); err != nil {
+		slog.Warn("failed to remove allocation for inactive node", slog.String("cluster", taskListInfo.Cluster), slog.String("domain", taskListInfo.Domain), slog.String("tasklist", taskListInfo.TaskList), slog.String("error", err.Error()))
+	}
+}
+
+// coordinatorStillHasLock checks if the coordinator still owns the cluster coordination lock
+func (a *AlgorithmV1) coordinatorStillHasLock(ctx context.Context) bool {
+	if a.clusterManager == nil {
+		// If no cluster manager provided, skip validation (for backward compatibility)
+		return true
+	}
+	
+	lockResult := a.clusterManager.BecomeClusterCoordinator(ctx)
+	return lockResult.Acquired
 }

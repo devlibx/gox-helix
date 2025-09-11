@@ -84,13 +84,28 @@ func (c *clusterManagerImpl) BecomeClusterCoordinator(ctx context.Context) *lock
 		OwnerID: c.clusterId,
 		TTL:     c.clusterManagerConfig.ControllerTtl,
 	}); err != nil || !r.Acquired {
-		slog.Debug("this node is not the cluster controller - (expected with multi node cluster) not allowed to mark nodes inactive", slog.String("cluster", c.Name))
+		slog.Debug("coordinator lock acquisition FAILED",
+			slog.String("cluster", c.Name),
+			slog.String("coordinator_id", c.clusterId[:8]), // Short ID for readability
+			slog.String("lock_key", "cluster-controller-"+c.Name),
+			slog.String("error", func() string {
+				if err != nil {
+					return err.Error()
+				} else {
+					return "lock_not_acquired"
+				}
+			}()))
 		return &lock.AcquireResponse{
 			OwnerID:  "",
 			Acquired: false,
 			Epoch:    0,
 		}
 	} else {
+		slog.Debug("coordinator lock acquisition SUCCESS",
+			slog.String("cluster", c.Name),
+			slog.String("coordinator_id", c.clusterId[:8]),
+			slog.String("lock_key", "cluster-controller-"+c.Name),
+			slog.Int64("epoch", r.Epoch))
 		return r
 	}
 }
@@ -248,7 +263,7 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 		}
 
 		// Remove allocations which are assigned to inactive nodes
-		c.removeAllocationForInactiveNodes(ctx)
+		// c.removeAllocationForInactiveNodes(ctx)
 
 		// Sleep for next clean-up to mark nodes inactive (normalized for time acceleration)
 		c.Sleep(c.NormalizeDuration(1 * time.Second))

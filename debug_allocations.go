@@ -43,9 +43,9 @@ func main() {
 	queries := helixClusterMysql.New(db)
 
 	// Target allocation parameters
-	cluster := "soak-test-cluster-1-0cf3c92b"
-	domain := "domain-2-34a1aeaa"
-	tasklist := "tasklist-9-7d33de03"
+	cluster := "soak-test-cluster-1-1a8464db"
+	domain := "domain-2-44fcf81d"
+	tasklist := "tasklist-9-d52371b7"
 
 	fmt.Printf("🔍 ALLOCATION ANALYSIS\n")
 	fmt.Printf("═══════════════════════════════════════════════════════════════════════════\n")

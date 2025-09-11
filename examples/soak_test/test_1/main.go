@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -47,6 +48,11 @@ type SoakTestApp struct {
 }
 
 func main() {
+	// Set slog to DEBUG level to see coordinator lock acquisition logs
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
 	fmt.Printf("🚀 Starting Gox-Helix Soak Test\n")
 	fmt.Printf("═══════════════════════════════════════════════════════════════════════════\n")
 
@@ -269,7 +275,7 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			config := &managment.ClusterManagerConfig{
 				Name:                  clusterName,
 				NodeHeartbeatInterval: 3 * time.Second,
-				ControllerTtl:         2 * time.Second, // Short TTL for coordinator churn!
+				ControllerTtl:         40 * time.Second, // 20s = 2s real time with 10x acceleration
 			}
 			return managment.NewClusterManager(cf, config, db, locker)
 		}),
@@ -279,11 +285,12 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 			cf gox.CrossFunction,
 			db *helixClusterMysql.Queries,
 			connHolder database.ConnectionHolder,
+			clusterManager managment.ClusterManager,
 		) (managment.AllocationManager, error) {
 			algorithmConfig := &managment.AlgorithmConfig{
 				TimeToWaitForPartitionReleaseBeforeForceRelease: 10 * time.Second, // Increased for chaos conditions
 			}
-			return allocation.NewAllocationAlgorithmV1(cf, db, db, algorithmConfig, connHolder)
+			return allocation.NewAllocationAlgorithmV1(cf, db, db, algorithmConfig, connHolder, clusterManager)
 		}),
 
 		// Coordinator
@@ -323,19 +330,19 @@ func (app *SoakTestApp) createClusterComponentsWithFx(clusterName string) (manag
 // ensureMinimumActiveNodes checks and adds nodes if we don't have enough active nodes
 func (app *SoakTestApp) ensureMinimumActiveNodes(ctx context.Context) error {
 	const minRequiredNodes = 20 // Minimum nodes needed for stable partition allocation
-	
+
 	fmt.Printf("🔍 ENSURE MINIMUM NODES: Starting check before stabilization...\n")
-	
+
 	stats := app.nodeManager.GetClusterStats()
 	fmt.Printf("🔍 ENSURE MINIMUM NODES: Got stats for %d clusters\n", len(stats))
-	
+
 	for clusterName, activeCount := range stats {
 		fmt.Printf("📊 ENSURE MINIMUM NODES: Cluster %s: %d active nodes (need %d)\n", clusterName, activeCount, minRequiredNodes)
-		
+
 		if activeCount < minRequiredNodes {
 			nodesToAdd := minRequiredNodes - activeCount
 			fmt.Printf("⚠️  ENSURE MINIMUM NODES: Adding %d nodes to cluster %s...\n", nodesToAdd, clusterName)
-			
+
 			// Add required nodes with more aggressive timing
 			for i := 0; i < nodesToAdd; i++ {
 				fmt.Printf("➕ ENSURE MINIMUM NODES: Adding node %d/%d...\n", i+1, nodesToAdd)
@@ -346,16 +353,16 @@ func (app *SoakTestApp) ensureMinimumActiveNodes(ctx context.Context) error {
 				// Small delay between each node addition
 				time.Sleep(100 * time.Millisecond)
 			}
-			
+
 			// Wait longer for nodes to register and establish heartbeats
 			fmt.Printf("⏳ ENSURE MINIMUM NODES: Waiting 10 seconds for nodes to become active...\n")
 			time.Sleep(10 * time.Second)
-			
+
 			// Re-check count multiple times to see the progression
 			for attempt := 1; attempt <= 3; attempt++ {
 				newStats := app.nodeManager.GetClusterStats()
 				newCount := newStats[clusterName]
-				fmt.Printf("🔍 ENSURE MINIMUM NODES: Attempt %d - Cluster %s now has %d active nodes\n", 
+				fmt.Printf("🔍 ENSURE MINIMUM NODES: Attempt %d - Cluster %s now has %d active nodes\n",
 					attempt, clusterName, newCount)
 				if newCount >= minRequiredNodes {
 					break
@@ -363,11 +370,11 @@ func (app *SoakTestApp) ensureMinimumActiveNodes(ctx context.Context) error {
 				time.Sleep(2 * time.Second)
 			}
 		} else {
-			fmt.Printf("✅ ENSURE MINIMUM NODES: Cluster %s has sufficient active nodes (%d >= %d)\n", 
+			fmt.Printf("✅ ENSURE MINIMUM NODES: Cluster %s has sufficient active nodes (%d >= %d)\n",
 				clusterName, activeCount, minRequiredNodes)
 		}
 	}
-	
+
 	fmt.Printf("🔍 ENSURE MINIMUM NODES: Completed minimum node check\n")
 	return nil
 }
