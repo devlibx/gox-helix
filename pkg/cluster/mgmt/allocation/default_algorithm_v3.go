@@ -58,16 +58,6 @@ func (a *AlgorithmV1) CalculateAllocation(ctx context.Context, taskListInfo mana
 		return nil, errors.Wrap(err, "failed to update database")
 	}
 
-	/*if err := a.dbInterface.MarkAllocationsInactiveForInactiveNodes(
-		ctx,
-		helixClusterMysql.MarkAllocationsInactiveForInactiveNodesParams{
-			Cluster:  taskListInfo.Cluster,
-			Domain:   taskListInfo.Domain,
-			Tasklist: taskListInfo.TaskList,
-		}); err != nil {
-		slog.Warn("failed to remove allocation for inactive node", slog.String("cluster", taskListInfo.Cluster), slog.String("domain", taskListInfo.Domain), slog.String("tasklist", taskListInfo.TaskList), slog.String("error", err.Error()))
-	}*/
-
 	return &managment.AllocationResponse{}, nil
 }
 
@@ -497,7 +487,7 @@ func (a *AlgorithmV1) coordinatorStillHasLock(ctx context.Context) bool {
 		// If no cluster manager provided, skip validation (for backward compatibility)
 		return true
 	}
-	
+
 	lockResult := a.clusterManager.BecomeClusterCoordinator(ctx)
 	return lockResult.Acquired
 }
