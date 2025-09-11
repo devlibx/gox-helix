@@ -11,7 +11,7 @@ import (
 )
 
 const getLockByLockKey = `-- name: GetLockByLockKey :one
-SELECT owner_id, expires_at, epoch
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ owner_id, expires_at, epoch
 FROM helix_locks
 WHERE lock_key = ?
   AND status = 1
@@ -25,7 +25,7 @@ type GetLockByLockKeyRow struct {
 
 // GetLockByLockKey
 //
-//	SELECT owner_id, expires_at, epoch
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ owner_id, expires_at, epoch
 //	FROM helix_locks
 //	WHERE lock_key = ?
 //	  AND status = 1
@@ -37,7 +37,7 @@ func (q *Queries) GetLockByLockKey(ctx context.Context, lockKey string) (*GetLoc
 }
 
 const tryUpsertLock = `-- name: TryUpsertLock :exec
-INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
 VALUES (?, ?, ?, 1, 1)
 ON DUPLICATE KEY
     UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(owner_id), owner_id),
@@ -56,7 +56,7 @@ type TryUpsertLockParams struct {
 
 // TryUpsertLock
 //
-//	INSERT INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
+//	INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_locks (lock_key, owner_id, expires_at, epoch, status)
 //	VALUES (?, ?, ?, 1, 1)
 //	ON DUPLICATE KEY
 //	    UPDATE owner_id   = IF(owner_id = VALUES(owner_id) OR expires_at < ?, VALUES(owner_id), owner_id),

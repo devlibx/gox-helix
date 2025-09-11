@@ -12,7 +12,7 @@ import (
 )
 
 const deregisterNode = `-- name: DeregisterNode :exec
-UPDATE helix_nodes
+UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 SET status  = 0,
     version = version + 1
 WHERE cluster_name = ?
@@ -27,7 +27,7 @@ type DeregisterNodeParams struct {
 
 // DeregisterNode
 //
-//	UPDATE helix_nodes
+//	UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 //	SET status  = 0,
 //	    version = version + 1
 //	WHERE cluster_name = ?
@@ -39,7 +39,7 @@ func (q *Queries) DeregisterNode(ctx context.Context, arg DeregisterNodeParams) 
 }
 
 const getActiveNodes = `-- name: GetActiveNodes :many
-SELECT cluster_name,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster_name,
        node_uuid,
        node_metadata,
        last_hb_time,
@@ -65,7 +65,7 @@ type GetActiveNodesRow struct {
 
 // GetActiveNodes
 //
-//	SELECT cluster_name,
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster_name,
 //	       node_uuid,
 //	       node_metadata,
 //	       last_hb_time,
@@ -109,7 +109,7 @@ func (q *Queries) GetActiveNodes(ctx context.Context, clusterName string) ([]*Ge
 }
 
 const getAllDomainsAndTaskListsByClusterCname = `-- name: GetAllDomainsAndTaskListsByClusterCname :many
-SELECT id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
 FROM helix_cluster
 WHERE cluster = ?
   AND status = 1
@@ -117,7 +117,7 @@ WHERE cluster = ?
 
 // GetAllDomainsAndTaskListsByClusterCname
 //
-//	SELECT id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
 //	FROM helix_cluster
 //	WHERE cluster = ?
 //	  AND status = 1
@@ -155,7 +155,7 @@ func (q *Queries) GetAllDomainsAndTaskListsByClusterCname(ctx context.Context, c
 }
 
 const getAllocationById = `-- name: GetAllocationById :one
-SELECT id,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
        cluster,
        domain,
        tasklist,
@@ -177,7 +177,7 @@ type GetAllocationByIdParams struct {
 
 // GetAllocationById
 //
-//	SELECT id,
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
 //	       cluster,
 //	       domain,
 //	       tasklist,
@@ -209,7 +209,7 @@ func (q *Queries) GetAllocationById(ctx context.Context, arg GetAllocationByIdPa
 }
 
 const getAllocationByNodeId = `-- name: GetAllocationByNodeId :one
-SELECT id,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
        cluster,
        domain,
        tasklist,
@@ -226,7 +226,7 @@ WHERE node_id = ?
 
 // GetAllocationByNodeId
 //
-//	SELECT id,
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
 //	       cluster,
 //	       domain,
 //	       tasklist,
@@ -258,7 +258,7 @@ func (q *Queries) GetAllocationByNodeId(ctx context.Context, nodeID string) (*He
 }
 
 const getAllocationsForTasklist = `-- name: GetAllocationsForTasklist :many
-SELECT id,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
        cluster,
        domain,
        tasklist,
@@ -283,7 +283,7 @@ type GetAllocationsForTasklistParams struct {
 
 // GetAllocationsForTasklist
 //
-//	SELECT id,
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
 //	       cluster,
 //	       domain,
 //	       tasklist,
@@ -333,7 +333,7 @@ func (q *Queries) GetAllocationsForTasklist(ctx context.Context, arg GetAllocati
 }
 
 const getCluster = `-- name: GetCluster :one
-SELECT cluster,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
        domain,
        tasklist,
        metadata,
@@ -367,7 +367,7 @@ type GetClusterRow struct {
 
 // GetCluster
 //
-//	SELECT cluster,
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
 //	       domain,
 //	       tasklist,
 //	       metadata,
@@ -397,7 +397,7 @@ func (q *Queries) GetCluster(ctx context.Context, arg GetClusterParams) (*GetClu
 }
 
 const getClustersByDomain = `-- name: GetClustersByDomain :many
-SELECT cluster,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
        domain,
        tasklist,
        metadata,
@@ -429,7 +429,7 @@ type GetClustersByDomainRow struct {
 
 // GetClustersByDomain
 //
-//	SELECT cluster,
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
 //	       domain,
 //	       tasklist,
 //	       metadata,
@@ -474,7 +474,7 @@ func (q *Queries) GetClustersByDomain(ctx context.Context, arg GetClustersByDoma
 }
 
 const getNodeById = `-- name: GetNodeById :one
-SELECT id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
 FROM helix_nodes
 WHERE cluster_name = ?
   AND node_uuid = ?
@@ -488,7 +488,7 @@ type GetNodeByIdParams struct {
 
 // GetNodeById
 //
-//	SELECT id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
+//	SELECT /*+ MAX_EXECUTION_TIME(1000) */ id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
 //	FROM helix_nodes
 //	WHERE cluster_name = ?
 //	  AND node_uuid = ?
@@ -511,7 +511,7 @@ func (q *Queries) GetNodeById(ctx context.Context, arg GetNodeByIdParams) (*Heli
 }
 
 const markInactiveNodes = `-- name: MarkInactiveNodes :exec
-UPDATE helix_nodes
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_nodes
 SET status  = 0,
     version = version + 1
 WHERE cluster_name = ?
@@ -526,7 +526,7 @@ type MarkInactiveNodesParams struct {
 
 // MarkInactiveNodes
 //
-//	UPDATE helix_nodes
+//	UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_nodes
 //	SET status  = 0,
 //	    version = version + 1
 //	WHERE cluster_name = ?
@@ -538,7 +538,7 @@ func (q *Queries) MarkInactiveNodes(ctx context.Context, arg MarkInactiveNodesPa
 }
 
 const markNodeDeletable = `-- name: MarkNodeDeletable :exec
-UPDATE helix_allocation
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 SET status = 2
 WHERE node_id = ?
   AND status = 0
@@ -546,7 +546,7 @@ WHERE node_id = ?
 
 // MarkNodeDeletable
 //
-//	UPDATE helix_allocation
+//	UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 //	SET status = 2
 //	WHERE node_id = ?
 //	  AND status = 0
@@ -556,7 +556,7 @@ func (q *Queries) MarkNodeDeletable(ctx context.Context, nodeID string) error {
 }
 
 const markNodeInactive = `-- name: MarkNodeInactive :exec
-UPDATE helix_allocation
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 SET status = 0
 WHERE node_id = ?
   AND status = 1
@@ -564,7 +564,7 @@ WHERE node_id = ?
 
 // MarkNodeInactive
 //
-//	UPDATE helix_allocation
+//	UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 //	SET status = 0
 //	WHERE node_id = ?
 //	  AND status = 1
@@ -574,7 +574,7 @@ func (q *Queries) MarkNodeInactive(ctx context.Context, nodeID string) error {
 }
 
 const updateHeartbeat = `-- name: UpdateHeartbeat :execresult
-UPDATE helix_nodes
+UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 SET last_hb_time = ?,
     version      = version + 1
 WHERE cluster_name = ?
@@ -590,7 +590,7 @@ type UpdateHeartbeatParams struct {
 
 // UpdateHeartbeat
 //
-//	UPDATE helix_nodes
+//	UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 //	SET last_hb_time = ?,
 //	    version      = version + 1
 //	WHERE cluster_name = ?
@@ -601,7 +601,7 @@ func (q *Queries) UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams
 }
 
 const upsertAllocation = `-- name: UpsertAllocation :exec
-INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
 VALUES (?, ?, ?, ?, ?, ?, 1)
 ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
                         metadata       = VALUES(metadata),
@@ -619,7 +619,7 @@ type UpsertAllocationParams struct {
 
 // UpsertAllocation
 //
-//	INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+//	INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
 //	VALUES (?, ?, ?, ?, ?, ?, 1)
 //	ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
 //	                        metadata       = VALUES(metadata),
@@ -637,7 +637,7 @@ func (q *Queries) UpsertAllocation(ctx context.Context, arg UpsertAllocationPara
 }
 
 const upsertCluster = `-- name: UpsertCluster :exec
-INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
 VALUES (?, ?, ?, ?, ?, 1)
 ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
                         metadata        = VALUES(metadata),
@@ -654,7 +654,7 @@ type UpsertClusterParams struct {
 
 // UpsertCluster
 //
-//	INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+//	INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
 //	VALUES (?, ?, ?, ?, ?, 1)
 //	ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
 //	                        metadata        = VALUES(metadata),
@@ -671,7 +671,7 @@ func (q *Queries) UpsertCluster(ctx context.Context, arg UpsertClusterParams) er
 }
 
 const upsertNode = `-- name: UpsertNode :exec
-INSERT INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
 VALUES (?, ?, ?, ?, 1)
 ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
                         last_hb_time  = VALUES(last_hb_time),
@@ -687,7 +687,7 @@ type UpsertNodeParams struct {
 
 // UpsertNode
 //
-//	INSERT INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
+//	INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
 //	VALUES (?, ?, ?, ?, 1)
 //	ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
 //	                        last_hb_time  = VALUES(last_hb_time),

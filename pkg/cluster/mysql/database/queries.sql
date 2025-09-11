@@ -1,5 +1,5 @@
 -- name: UpsertNode :exec
-INSERT INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
 VALUES (?, ?, ?, ?, 1)
 ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
                         last_hb_time  = VALUES(last_hb_time),
@@ -7,7 +7,7 @@ ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
 
 
 -- name: UpdateHeartbeat :execresult
-UPDATE helix_nodes
+UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 SET last_hb_time = ?,
     version      = version + 1
 WHERE cluster_name = ?
@@ -15,7 +15,7 @@ WHERE cluster_name = ?
   AND status = 1;
 
 -- name: DeregisterNode :exec
-UPDATE helix_nodes
+UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 SET status  = 0,
     version = version + 1
 WHERE cluster_name = ?
@@ -23,7 +23,7 @@ WHERE cluster_name = ?
   AND status = 1;
 
 -- name: GetActiveNodes :many
-SELECT cluster_name,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster_name,
        node_uuid,
        node_metadata,
        last_hb_time,
@@ -36,7 +36,7 @@ WHERE cluster_name = ?
   AND status = 1;
 
 -- name: MarkInactiveNodes :exec
-UPDATE helix_nodes
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_nodes
 SET status  = 0,
     version = version + 1
 WHERE cluster_name = ?
@@ -44,27 +44,27 @@ WHERE cluster_name = ?
   AND last_hb_time < ?;
 
 -- name: GetNodeById :one
-SELECT *
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ *
 FROM helix_nodes
 WHERE cluster_name = ?
   AND node_uuid = ?
   AND status = 1;
 
 -- name: UpsertCluster :exec
-INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
 VALUES (?, ?, ?, ?, ?, 1)
 ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
                         metadata        = VALUES(metadata),
                         status          = 1;
 
 -- name: GetAllDomainsAndTaskListsByClusterCname :many
-SELECT *
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ *
 FROM helix_cluster
 WHERE cluster = ?
   AND status = 1;
 
 -- name: GetClustersByDomain :many
-SELECT cluster,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
        domain,
        tasklist,
        metadata,
@@ -78,7 +78,7 @@ WHERE cluster = ?
   AND status = 1;
 
 -- name: GetCluster :one
-SELECT cluster,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
        domain,
        tasklist,
        metadata,
@@ -93,14 +93,14 @@ WHERE cluster = ?
   AND status = 1;
 
 -- name: UpsertAllocation :exec
-INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
 VALUES (?, ?, ?, ?, ?, ?, 1)
 ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
                         metadata       = VALUES(metadata),
                         status         = 1;
 
 -- name: GetAllocationByNodeId :one
-SELECT id,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
        cluster,
        domain,
        tasklist,
@@ -115,7 +115,7 @@ WHERE node_id = ?
   AND status = 1;
 
 -- name: GetAllocationsForTasklist :many
-SELECT id,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
        cluster,
        domain,
        tasklist,
@@ -132,19 +132,19 @@ WHERE cluster = ?
   AND status = 1;
 
 -- name: MarkNodeInactive :exec
-UPDATE helix_allocation
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 SET status = 0
 WHERE node_id = ?
   AND status = 1;
 
 -- name: MarkNodeDeletable :exec
-UPDATE helix_allocation
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 SET status = 2
 WHERE node_id = ?
   AND status = 0;
 
 -- name: GetAllocationById :one
-SELECT id,
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
        cluster,
        domain,
        tasklist,

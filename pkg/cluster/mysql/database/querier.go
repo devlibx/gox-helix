@@ -12,7 +12,7 @@ import (
 type Querier interface {
 	//DeregisterNode
 	//
-	//  UPDATE helix_nodes
+	//  UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 	//  SET status  = 0,
 	//      version = version + 1
 	//  WHERE cluster_name = ?
@@ -21,7 +21,7 @@ type Querier interface {
 	DeregisterNode(ctx context.Context, arg DeregisterNodeParams) error
 	//GetActiveNodes
 	//
-	//  SELECT cluster_name,
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster_name,
 	//         node_uuid,
 	//         node_metadata,
 	//         last_hb_time,
@@ -35,14 +35,14 @@ type Querier interface {
 	GetActiveNodes(ctx context.Context, clusterName string) ([]*GetActiveNodesRow, error)
 	//GetAllDomainsAndTaskListsByClusterCname
 	//
-	//  SELECT id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ id, cluster, domain, tasklist, metadata, partition_count, status, created_at, updated_at
 	//  FROM helix_cluster
 	//  WHERE cluster = ?
 	//    AND status = 1
 	GetAllDomainsAndTaskListsByClusterCname(ctx context.Context, cluster string) ([]*HelixCluster, error)
 	//GetAllocationById
 	//
-	//  SELECT id,
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
 	//         cluster,
 	//         domain,
 	//         tasklist,
@@ -58,7 +58,7 @@ type Querier interface {
 	GetAllocationById(ctx context.Context, arg GetAllocationByIdParams) (*HelixAllocation, error)
 	//GetAllocationByNodeId
 	//
-	//  SELECT id,
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
 	//         cluster,
 	//         domain,
 	//         tasklist,
@@ -74,7 +74,7 @@ type Querier interface {
 	GetAllocationByNodeId(ctx context.Context, nodeID string) (*HelixAllocation, error)
 	//GetAllocationsForTasklist
 	//
-	//  SELECT id,
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ id,
 	//         cluster,
 	//         domain,
 	//         tasklist,
@@ -92,7 +92,7 @@ type Querier interface {
 	GetAllocationsForTasklist(ctx context.Context, arg GetAllocationsForTasklistParams) ([]*HelixAllocation, error)
 	//GetCluster
 	//
-	//  SELECT cluster,
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
 	//         domain,
 	//         tasklist,
 	//         metadata,
@@ -108,7 +108,7 @@ type Querier interface {
 	GetCluster(ctx context.Context, arg GetClusterParams) (*GetClusterRow, error)
 	//GetClustersByDomain
 	//
-	//  SELECT cluster,
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ cluster,
 	//         domain,
 	//         tasklist,
 	//         metadata,
@@ -123,7 +123,7 @@ type Querier interface {
 	GetClustersByDomain(ctx context.Context, arg GetClustersByDomainParams) ([]*GetClustersByDomainRow, error)
 	//GetNodeById
 	//
-	//  SELECT id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */ id, cluster_name, node_uuid, node_metadata, last_hb_time, status, version, created_at, updated_at
 	//  FROM helix_nodes
 	//  WHERE cluster_name = ?
 	//    AND node_uuid = ?
@@ -131,7 +131,7 @@ type Querier interface {
 	GetNodeById(ctx context.Context, arg GetNodeByIdParams) (*HelixNode, error)
 	//MarkInactiveNodes
 	//
-	//  UPDATE helix_nodes
+	//  UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_nodes
 	//  SET status  = 0,
 	//      version = version + 1
 	//  WHERE cluster_name = ?
@@ -140,21 +140,21 @@ type Querier interface {
 	MarkInactiveNodes(ctx context.Context, arg MarkInactiveNodesParams) error
 	//MarkNodeDeletable
 	//
-	//  UPDATE helix_allocation
+	//  UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 	//  SET status = 2
 	//  WHERE node_id = ?
 	//    AND status = 0
 	MarkNodeDeletable(ctx context.Context, nodeID string) error
 	//MarkNodeInactive
 	//
-	//  UPDATE helix_allocation
+	//  UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 	//  SET status = 0
 	//  WHERE node_id = ?
 	//    AND status = 1
 	MarkNodeInactive(ctx context.Context, nodeID string) error
 	//UpdateHeartbeat
 	//
-	//  UPDATE helix_nodes
+	//  UPDATE helix_nodes /*+ MAX_EXECUTION_TIME(1000) */
 	//  SET last_hb_time = ?,
 	//      version      = version + 1
 	//  WHERE cluster_name = ?
@@ -163,7 +163,7 @@ type Querier interface {
 	UpdateHeartbeat(ctx context.Context, arg UpdateHeartbeatParams) (sql.Result, error)
 	//UpsertAllocation
 	//
-	//  INSERT INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
+	//  INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_allocation (cluster, domain, tasklist, node_id, partition_info, metadata, status)
 	//  VALUES (?, ?, ?, ?, ?, ?, 1)
 	//  ON DUPLICATE KEY UPDATE partition_info = VALUES(partition_info),
 	//                          metadata       = VALUES(metadata),
@@ -171,7 +171,7 @@ type Querier interface {
 	UpsertAllocation(ctx context.Context, arg UpsertAllocationParams) error
 	//UpsertCluster
 	//
-	//  INSERT INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
+	//  INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_cluster (cluster, domain, tasklist, partition_count, metadata, status)
 	//  VALUES (?, ?, ?, ?, ?, 1)
 	//  ON DUPLICATE KEY UPDATE partition_count = VALUES(partition_count),
 	//                          metadata        = VALUES(metadata),
@@ -179,7 +179,7 @@ type Querier interface {
 	UpsertCluster(ctx context.Context, arg UpsertClusterParams) error
 	//UpsertNode
 	//
-	//  INSERT INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
+	//  INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_nodes (cluster_name, node_uuid, node_metadata, last_hb_time, status)
 	//  VALUES (?, ?, ?, ?, 1)
 	//  ON DUPLICATE KEY UPDATE node_metadata = VALUES(node_metadata),
 	//                          last_hb_time  = VALUES(last_hb_time),
