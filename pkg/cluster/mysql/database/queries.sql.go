@@ -518,6 +518,40 @@ func (q *Queries) GetNodeById(ctx context.Context, arg GetNodeByIdParams) (*Heli
 	return &i, err
 }
 
+const markAllocationsInactiveForInactiveNodes = `-- name: MarkAllocationsInactiveForInactiveNodes :exec
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation ha
+INNER JOIN helix_nodes hn ON ha.node_id = hn.node_uuid 
+                         AND ha.cluster = hn.cluster_name
+SET ha.status = 0
+WHERE ha.cluster = ?
+  AND ha.domain = ?
+  AND ha.tasklist = ?
+  AND ha.status = 1
+  AND hn.status = 0
+`
+
+type MarkAllocationsInactiveForInactiveNodesParams struct {
+	Cluster  string `json:"cluster"`
+	Domain   string `json:"domain"`
+	Tasklist string `json:"tasklist"`
+}
+
+// MarkAllocationsInactiveForInactiveNodes
+//
+//	UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation ha
+//	INNER JOIN helix_nodes hn ON ha.node_id = hn.node_uuid
+//	                         AND ha.cluster = hn.cluster_name
+//	SET ha.status = 0
+//	WHERE ha.cluster = ?
+//	  AND ha.domain = ?
+//	  AND ha.tasklist = ?
+//	  AND ha.status = 1
+//	  AND hn.status = 0
+func (q *Queries) MarkAllocationsInactiveForInactiveNodes(ctx context.Context, arg MarkAllocationsInactiveForInactiveNodesParams) error {
+	_, err := q.exec(ctx, q.markAllocationsInactiveForInactiveNodesStmt, markAllocationsInactiveForInactiveNodes, arg.Cluster, arg.Domain, arg.Tasklist)
+	return err
+}
+
 const markInactiveNodes = `-- name: MarkInactiveNodes :exec
 UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_nodes
 SET status  = 0,

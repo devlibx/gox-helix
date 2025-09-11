@@ -51,6 +51,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getNodeByIdStmt, err = db.PrepareContext(ctx, getNodeById); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNodeById: %w", err)
 	}
+	if q.markAllocationsInactiveForInactiveNodesStmt, err = db.PrepareContext(ctx, markAllocationsInactiveForInactiveNodes); err != nil {
+		return nil, fmt.Errorf("error preparing query MarkAllocationsInactiveForInactiveNodes: %w", err)
+	}
 	if q.markInactiveNodesStmt, err = db.PrepareContext(ctx, markInactiveNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkInactiveNodes: %w", err)
 	}
@@ -120,6 +123,11 @@ func (q *Queries) Close() error {
 	if q.getNodeByIdStmt != nil {
 		if cerr := q.getNodeByIdStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNodeByIdStmt: %w", cerr)
+		}
+	}
+	if q.markAllocationsInactiveForInactiveNodesStmt != nil {
+		if cerr := q.markAllocationsInactiveForInactiveNodesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing markAllocationsInactiveForInactiveNodesStmt: %w", cerr)
 		}
 	}
 	if q.markInactiveNodesStmt != nil {
@@ -205,6 +213,7 @@ type Queries struct {
 	getClusterStmt                              *sql.Stmt
 	getClustersByDomainStmt                     *sql.Stmt
 	getNodeByIdStmt                             *sql.Stmt
+	markAllocationsInactiveForInactiveNodesStmt *sql.Stmt
 	markInactiveNodesStmt                       *sql.Stmt
 	markNodeDeletableStmt                       *sql.Stmt
 	markNodeInactiveStmt                        *sql.Stmt
@@ -227,6 +236,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getClusterStmt:                              q.getClusterStmt,
 		getClustersByDomainStmt:                     q.getClustersByDomainStmt,
 		getNodeByIdStmt:                             q.getNodeByIdStmt,
+		markAllocationsInactiveForInactiveNodesStmt: q.markAllocationsInactiveForInactiveNodesStmt,
 		markInactiveNodesStmt:                       q.markInactiveNodesStmt,
 		markNodeDeletableStmt:                       q.markNodeDeletableStmt,
 		markNodeInactiveStmt:                        q.markNodeInactiveStmt,

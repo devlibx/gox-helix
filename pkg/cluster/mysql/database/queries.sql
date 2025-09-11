@@ -135,6 +135,17 @@ WHERE ha.cluster = ?
   AND ha.status = 1
   AND hn.status = 1;
 
+-- name: MarkAllocationsInactiveForInactiveNodes :exec
+UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation ha
+INNER JOIN helix_nodes hn ON ha.node_id = hn.node_uuid 
+                         AND ha.cluster = hn.cluster_name
+SET ha.status = 0
+WHERE ha.cluster = ?
+  AND ha.domain = ?
+  AND ha.tasklist = ?
+  AND ha.status = 1
+  AND hn.status = 0;
+
 -- name: MarkNodeInactive :exec
 UPDATE /*+ MAX_EXECUTION_TIME(1000) */ helix_allocation
 SET status = 0

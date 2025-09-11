@@ -136,7 +136,7 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 					c.nodeMutex.Lock()
 					delete(c.nodes, nodeId)
 					c.nodeMutex.Unlock()
-					
+
 					ch <- &NodeRegisterChannel{ErrorReregistrationNeeded: true}
 					return
 				}
@@ -247,7 +247,28 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 			slog.Debug("marked inactive nodes", slog.String("cluster", c.Name))
 		}
 
+		// Remove allocations which are assigned to inactive nodes
+		c.removeAllocationForInactiveNodes(ctx)
+
 		// Sleep for next clean-up to mark nodes inactive (normalized for time acceleration)
 		c.Sleep(c.NormalizeDuration(1 * time.Second))
+	}
+}
+
+func (c *clusterManagerImpl) removeAllocationForInactiveNodes(ctx context.Context) {
+	if entries, err := c.dbInterface.GetAllDomainsAndTaskListsByClusterCname(ctx, c.Name); err != nil {
+		slog.Warn("failed to get task lists and domain for cluster (need to remove allocation for inactive nodes)", slog.String("cluster", c.Name), slog.String("error", err.Error()))
+	} else {
+		for _, entry := range entries {
+			if err := c.dbInterface.MarkAllocationsInactiveForInactiveNodes(
+				ctx,
+				helixClusterMysql.MarkAllocationsInactiveForInactiveNodesParams{
+					Cluster:  entry.Cluster,
+					Domain:   entry.Domain,
+					Tasklist: entry.Tasklist,
+				}); err != nil {
+				slog.Warn("failed to remove allocation for inactive node", slog.String("cluster", c.Name), slog.String("domain", entry.Domain), slog.String("tasklist", entry.Tasklist), slog.String("error", err.Error()))
+			}
+		}
 	}
 }

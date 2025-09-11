@@ -53,7 +53,7 @@ func (a *AlgorithmV1) CalculateAllocation(ctx context.Context, taskListInfo mana
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to update database")
 	}
-
+	
 	return &managment.AllocationResponse{}, nil
 }
 
