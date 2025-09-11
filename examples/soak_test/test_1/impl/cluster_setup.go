@@ -214,13 +214,13 @@ func GetDefaultClusterConfigs() []ClusterConfig {
 			MaxPartitions:      100,
 			InitialNodes:       40,
 		},
-		/*{
+		{
 			Name:               fmt.Sprintf("soak-test-cluster-2-%s", testRunId),
 			DomainCount:        3,
 			TasklistsPerDomain: 10,
 			MinPartitions:      50,
 			MaxPartitions:      100,
 			InitialNodes:       40,
-		},*/
+		},
 	}
 }

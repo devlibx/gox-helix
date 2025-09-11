@@ -20,8 +20,6 @@ var (
 	errorReregistrationNeeded = errors2.New("reregistrationNeeded")
 )
 
-var DisableMarkInactive = false
-
 type clusterManagerImpl struct {
 	gox.CrossFunction
 
@@ -258,16 +256,15 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 		}
 
 		// Remove inactive nodes from cluster (nodes not given HB for last 10 sec will be marked inactive)
-		if !DisableMarkInactive {
-			lastHbTime := c.Now().Add(c.NormalizeDuration(-10 * time.Second))
-			if err := c.dbInterface.MarkInactiveNodes(ctx, helixClusterMysql.MarkInactiveNodesParams{
-				ClusterName: c.Name,
-				LastHbTime:  lastHbTime,
-			}); err != nil {
-				slog.Warn("failed to mark nodes inactive (nodes where last HB was older than 10 sec)", slog.String("cluster", c.Name), slog.String("error", err.Error()))
-			} else {
-				slog.Debug("marked inactive nodes", slog.String("cluster", c.Name), slog.String("last HB", lastHbTime.String()))
-			}
+
+		lastHbTime := c.Now().Add(c.NormalizeDuration(-10 * time.Second))
+		if err := c.dbInterface.MarkInactiveNodes(ctx, helixClusterMysql.MarkInactiveNodesParams{
+			ClusterName: c.Name,
+			LastHbTime:  lastHbTime,
+		}); err != nil {
+			slog.Warn("failed to mark nodes inactive (nodes where last HB was older than 10 sec)", slog.String("cluster", c.Name), slog.String("error", err.Error()))
+		} else {
+			slog.Debug("marked inactive nodes", slog.String("cluster", c.Name), slog.String("last HB", lastHbTime.String()))
 		}
 
 		// Sleep for next clean-up to mark nodes inactive (normalized for time acceleration)

@@ -19,7 +19,6 @@ import (
 	"github.com/devlibx/gox-helix/pkg/common/database"
 	"github.com/devlibx/gox-helix/pkg/common/lock"
 	helixLock "github.com/devlibx/gox-helix/pkg/common/lock/mysql"
-	"github.com/devlibx/gox-helix/pkg/util"
 	"go.uber.org/fx"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -37,7 +36,7 @@ type SoakTestApp struct {
 
 	// Configuration
 	clusterConfigs []impl.ClusterConfig
-	mockCf         *util.MockCrossFunction
+	mockCf         gox.CrossFunction
 
 	// Cluster management
 	clusterManagers map[string]managment.ClusterManager
@@ -93,8 +92,9 @@ func NewSoakTestApp() (*SoakTestApp, error) {
 	}
 
 	// Create mock cross function with 10x time acceleration
-	t := time.Date(2012, time.January, 1, 13, 0, 0, 0, time.Local)
-	mockCf := util.NewMockCrossFunction(t)
+	// t := time.Date(2012, time.January, 1, 13, 0, 0, 0, time.Local)
+	// mockCf := util.NewMockCrossFunction(t)
+	mockCf := gox.NewNoOpCrossFunction()
 
 	// Create other components
 	nodeManager := impl.NewNodeManager(mockCf, clusterSetup.GetQueries())
@@ -147,9 +147,7 @@ func (app *SoakTestApp) RunSoakTest(ctx context.Context) error {
 	if err := app.chaosPhase(ctx); err != nil {
 		return fmt.Errorf("chaos phase failed: %w", err)
 	}
-
-	managment.DisableMarkInactive = true
-
+	
 	// Phase 3: Stabilization
 	if err := app.stabilizationPhase(ctx); err != nil {
 		return fmt.Errorf("stabilization phase failed: %w", err)

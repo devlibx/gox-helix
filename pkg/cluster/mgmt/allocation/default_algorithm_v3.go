@@ -11,6 +11,7 @@ import (
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
 	"github.com/devlibx/gox-helix/pkg/common/database"
 	"log/slog"
+	"sort"
 )
 
 type AlgorithmV1 struct {
@@ -120,9 +121,8 @@ func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managmen
 				continue // Skip invalid partitions ids
 			}
 
-			// Only consider assignments to active nodes
+			// Only consider assignments to active nodes (this should never happen)
 			if nodeState, nodeExists := nodeStates[nodeID]; !nodeExists || !nodeState.IsActive {
-
 				// Add this as an inactive node
 				nodeStates[partition.NodeID] = &NodeState{
 					NodeID:       partition.NodeID,
@@ -133,7 +133,6 @@ func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managmen
 				// Make sure these partitions are considered as unsigned
 				partition.Status = managment.PartitionAllocationUnassigned
 				partition.NodeID = ""
-
 				continue // Skip inactive nodes (we don't care what partitions are with inactive nodes)
 			}
 
@@ -142,13 +141,15 @@ func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managmen
 			if partitionInfo.AllocationStatus == managment.PartitionAllocationRequestedRelease ||
 				partitionInfo.AllocationStatus == managment.PartitionAllocationPendingRelease {
 				// Use NormalizeDuration to handle time acceleration correctly
-				normalizedTimeout := a.NormalizeDuration(a.algorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease)
+				// normalizedTimeout := a.NormalizeDuration(a.algorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease)
+				normalizedTimeout := a.algorithmConfig.TimeToWaitForPartitionReleaseBeforeForceRelease
 				if partitionInfo.UpdatedTime.Add(normalizedTimeout).Before(a.Now()) {
 					partition.Status = managment.PartitionAllocationUnassigned
 					partition.NodeID = ""
 				} else {
 					partition.Status = partitionInfo.AllocationStatus
 					partition.NodeID = nodeID
+					partition.UpdatedTime = partitionInfo.UpdatedTime
 				}
 			} else if partitionInfo.AllocationStatus == managment.PartitionAllocationAssigned {
 				partition.NodeID = nodeID
@@ -179,53 +180,76 @@ func (a *AlgorithmV1) calculateTargetDistribution(
 		}
 	}
 
-	// Handle edge case
+	// Handle edge case - Return empty distributions - this will result in no allocations
 	if activeNodeCount == 0 {
-		// Return empty distributions - this will result in no allocations
 		return map[string]*nodeDistribution{}, map[string][]*PartitionState{}
 	}
 
-	// Calculate target distribution based on actual active nodes
-	basePartitionsPerNode := taskListInfo.PartitionCount / activeNodeCount
-	remainder := taskListInfo.PartitionCount % activeNodeCount
-
-	// Create a holder of partition distribution per node
-	nodeDistributions := make(map[string]*nodeDistribution)
-	nodeIndex := 0
+	// Calculate exact partition distribution via round-robin
+	activeNodes := make([]string, 0, activeNodeCount)
 	for _, nodeState := range nodeStates {
-		if _, exists := nodeDistributions[nodeState.NodeID]; !exists && nodeState.IsActive {
-			maxAllowed := basePartitionsPerNode
-			if nodeIndex < remainder {
-				maxAllowed++ // Only first 'remainder' nodes get extra partition
-			}
-			n := newNodeDistribution(a.CrossFunction, maxAllowed, nodeState.NodeID)
-			nodeDistributions[nodeState.NodeID] = n
-			nodeIndex++
+		if nodeState.IsActive {
+			activeNodes = append(activeNodes, nodeState.NodeID)
 		}
 	}
+	sort.Strings(activeNodes) // Ensure consistent ordering
 
-	// Phase 1
-	// We have allocated partitions, which we want to give to existing nodes (sticky partitions to node allocation)
-	// In this step it will ensure that we only allocate assigned partitions ot a node (As long as we have capacity)
-	// It also ensure that we mark an assigned partitions to request released if node does not have capacity
-	//    Why - because we want to ask node to release these nodes
-	for partitionId, partitionInfo := range partitionInfos {
-		for _, nd := range nodeDistributions {
-			if done := nd.tryToAllocatePhase1(partitionInfo); done {
+	// Use round-robin to determine exact partition distribution
+	nodePartitionCounts := make(map[string]int)
+	for i := 0; i < taskListInfo.PartitionCount; i++ {
+		nodeIndex := i % len(activeNodes)
+		nodeId := activeNodes[nodeIndex]
+		nodePartitionCounts[nodeId]++
+	}
+
+	// Create node distributions with EXACT capacity (no buffer, no approximation)
+	nodeDistributions := make(map[string]*nodeDistribution)
+	totalCapacity := 0
+	for _, nodeId := range activeNodes {
+		exactCapacity := nodePartitionCounts[nodeId] // Exact capacity needed
+		n := newNodeDistribution(a.CrossFunction, exactCapacity, nodeId)
+		nodeDistributions[nodeId] = n
+		totalCapacity += exactCapacity
+	}
+
+	// Phase 1: Sticky allocation - keep existing partitions on their current nodes if capacity allows
+	// We loop through sorted partitions Ids as map may give different order in each run
+	partitionIds := make([]string, 0)
+	for k, _ := range partitionInfos {
+		partitionIds = append(partitionIds, k)
+	}
+	nodeIds := make([]string, 0)
+	for _, nodeId := range nodeDistributions {
+		nodeIds = append(nodeIds, nodeId.nodeId)
+	}
+	sort.Strings(partitionIds)
+	sort.Strings(nodeIds)
+	for _, partitionId := range partitionIds {
+		partitionInfo := partitionInfos[partitionId]
+		for _, nodeId := range nodeIds {
+			if done := nodeDistributions[nodeId].tryToAllocatePhase1(partitionInfo); done {
 				delete(partitionInfos, partitionId)
 				break
 			}
 		}
 	}
 
-	// Phase 2 - In this phase we will do the following
-	// 1. Any unassigned partitions will be allocated to a node
-	// 2. Any partitions in assigned state which are still not assigned
-	//        - we will give to other node with placeholder status (for capacity reservation)
-	// 3. Any partition unassigned will be given to a node were we have capacity
-	// 4. Release requested or pending - we will allocate them to other node with placeholder state (for capacity reservation)
-	for partitionId, partitionInfo := range partitionInfos {
-		for targetNodeId, _ := range nodeStates {
+	// Phase 2: Assign remaining partitions and create placeholders for migrations
+	// We loop through sorted partitions Ids as map may give different order in each run
+	partitionIds = make([]string, 0)
+	for k, _ := range partitionInfos {
+		partitionIds = append(partitionIds, k)
+	}
+	nodeIds = make([]string, 0)
+	for _, ns := range nodeStates {
+		nodeIds = append(nodeIds, ns.NodeID)
+	}
+	sort.Strings(partitionIds)
+	sort.Strings(nodeIds)
+	for _, partitionId := range partitionIds {
+		partitionInfo := partitionInfos[partitionId]
+		for _, nid := range nodeIds {
+			targetNodeId := nid
 			if nd, exists := nodeDistributions[targetNodeId]; exists {
 				if done := nd.tryToAllocatePhase2(partitionInfo, targetNodeId); done {
 					delete(partitionInfos, partitionId)
@@ -242,6 +266,7 @@ func (a *AlgorithmV1) calculateTargetDistribution(
 	}
 
 	// Add blank partitions for inactive nodes if we found - so that we can clean up partitions
+	// I don't think this is needed
 	for _, nodeState := range nodeStates {
 		if !nodeState.IsActive {
 			result[nodeState.NodeID] = make([]*PartitionState, 0)
@@ -279,6 +304,7 @@ func (d *nodeDistribution) getFinalResult() []*PartitionState {
 	for _, nd := range d.partitionWithReleaseState {
 		result = append(result, nd)
 	}
+
 	// IMPORTANT: Do NOT include placeholders in final result
 	// Placeholders are for internal capacity calculation only
 	// They should never be persisted to database
@@ -380,10 +406,8 @@ func (d *nodeDistribution) tryToAllocatePhase2(pi *PartitionState, nodeId string
 // updateDatabase writes the final assignments to the database using atomic transactions
 func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment.TaskListInfo, newAssignments map[string][]*PartitionState) error {
 
-	// Get database connection from holder
+	// Get database connection from holder and Begin transaction
 	db := a.databaseConnectionHolder.GetHelixMasterDbConnection()
-
-	// Begin transaction
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return errors.Wrap(err, "failed to begin transaction")
@@ -391,9 +415,9 @@ func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment
 
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		} else {
-			tx.Commit()
+			_ = tx.Commit()
 		}
 	}()
 
@@ -411,6 +435,7 @@ func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment
 	// Also remove bad allocations i.e. allocation where nodes are inactive
 	a.removeAllocationWithInactiveNode(ctx, qtx, taskListInfo)
 
+	// Why we do this - just in case there are 2 controller then this will make it safe
 	// Validate coordinator still holds the lock before committing transaction
 	// This prevents stale coordinators from committing conflicting allocation updates
 	if !a.coordinatorStillHasLock(ctx) {
@@ -421,11 +446,6 @@ func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment
 			slog.String("tasklist", taskListInfo.TaskList))
 		return err
 	}
-
-	slog.Debug("coordinator lock validated before commit - proceeding with allocation update",
-		slog.String("cluster", taskListInfo.Cluster),
-		slog.String("domain", taskListInfo.Domain),
-		slog.String("tasklist", taskListInfo.TaskList))
 
 	return nil
 }
@@ -484,10 +504,9 @@ func (a *AlgorithmV1) removeAllocationWithInactiveNode(ctx context.Context, qtx 
 // coordinatorStillHasLock checks if the coordinator still owns the cluster coordination lock
 func (a *AlgorithmV1) coordinatorStillHasLock(ctx context.Context) bool {
 	if a.clusterManager == nil {
-		// If no cluster manager provided, skip validation (for backward compatibility)
-		return true
+		return true // If no cluster manager provided, skip validation (for backward compatibility)
+	} else {
+		lockResult := a.clusterManager.BecomeClusterCoordinator(ctx)
+		return lockResult.Acquired
 	}
-
-	lockResult := a.clusterManager.BecomeClusterCoordinator(ctx)
-	return lockResult.Acquired
 }
