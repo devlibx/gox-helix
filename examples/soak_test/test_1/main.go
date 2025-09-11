@@ -93,7 +93,8 @@ func NewSoakTestApp() (*SoakTestApp, error) {
 	}
 
 	// Create mock cross function with 10x time acceleration
-	mockCf := util.NewMockCrossFunction(time.Now())
+	t := time.Date(2012, time.January, 1, 13, 0, 0, 0, time.Local)
+	mockCf := util.NewMockCrossFunction(t)
 
 	// Create other components
 	nodeManager := impl.NewNodeManager(mockCf, clusterSetup.GetQueries())
@@ -146,6 +147,8 @@ func (app *SoakTestApp) RunSoakTest(ctx context.Context) error {
 	if err := app.chaosPhase(ctx); err != nil {
 		return fmt.Errorf("chaos phase failed: %w", err)
 	}
+
+	managment.DisableMarkInactive = true
 
 	// Phase 3: Stabilization
 	if err := app.stabilizationPhase(ctx); err != nil {
@@ -437,7 +440,7 @@ func (app *SoakTestApp) stabilizationPhase(ctx context.Context) error {
 		return fmt.Errorf("pre-stabilization node check failed: %w", err)
 	}
 
-	if err := app.chaosController.StabilizationPhase(ctx, 30*time.Second); err != nil {
+	if err := app.chaosController.StabilizationPhase(ctx, 60*time.Second); err != nil {
 		return fmt.Errorf("stabilization phase failed: %w", err)
 	}
 

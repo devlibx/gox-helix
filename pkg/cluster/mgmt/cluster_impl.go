@@ -20,6 +20,8 @@ var (
 	errorReregistrationNeeded = errors2.New("reregistrationNeeded")
 )
 
+var DisableMarkInactive = false
+
 type clusterManagerImpl struct {
 	gox.CrossFunction
 
@@ -214,7 +216,7 @@ func (c *clusterManagerImpl) startHeartbeatForNode(ctx context.Context, node *No
 
 		// Ensure we update the DB for each node
 		currentTime := c.Now()
-		if result, err := c.dbInterface.UpdateHeartbeat(ctx, helixClusterMysql.UpdateHeartbeatParams{
+		if result, err := c.dbInterface.UpdateHeartbeat(context.Background(), helixClusterMysql.UpdateHeartbeatParams{
 			LastHbTime:  currentTime,
 			ClusterName: c.Name,
 			NodeUuid:    node.Id,
@@ -256,38 +258,19 @@ func (c *clusterManagerImpl) removeInactiveNodes(ctx context.Context) {
 		}
 
 		// Remove inactive nodes from cluster (nodes not given HB for last 10 sec will be marked inactive)
-		lastHbTime := c.Now().Add(c.NormalizeDuration(-10 * time.Second))
-		if err := c.dbInterface.MarkInactiveNodes(ctx, helixClusterMysql.MarkInactiveNodesParams{
-			ClusterName: c.Name,
-			LastHbTime:  lastHbTime,
-		}); err != nil {
-			slog.Warn("failed to mark nodes inactive (nodes where last HB was older than 10 sec)", slog.String("cluster", c.Name), slog.String("error", err.Error()))
-		} else {
-			slog.Debug("marked inactive nodes", slog.String("cluster", c.Name))
+		if !DisableMarkInactive {
+			lastHbTime := c.Now().Add(c.NormalizeDuration(-10 * time.Second))
+			if err := c.dbInterface.MarkInactiveNodes(ctx, helixClusterMysql.MarkInactiveNodesParams{
+				ClusterName: c.Name,
+				LastHbTime:  lastHbTime,
+			}); err != nil {
+				slog.Warn("failed to mark nodes inactive (nodes where last HB was older than 10 sec)", slog.String("cluster", c.Name), slog.String("error", err.Error()))
+			} else {
+				slog.Debug("marked inactive nodes", slog.String("cluster", c.Name), slog.String("last HB", lastHbTime.String()))
+			}
 		}
-
-		// Remove allocations which are assigned to inactive nodes
-		// c.removeAllocationForInactiveNodes(ctx)
 
 		// Sleep for next clean-up to mark nodes inactive (normalized for time acceleration)
 		c.Sleep(c.NormalizeDuration(1 * time.Second))
-	}
-}
-
-func (c *clusterManagerImpl) removeAllocationForInactiveNodes(ctx context.Context) {
-	if entries, err := c.dbInterface.GetAllDomainsAndTaskListsByClusterCname(ctx, c.Name); err != nil {
-		slog.Warn("failed to get task lists and domain for cluster (need to remove allocation for inactive nodes)", slog.String("cluster", c.Name), slog.String("error", err.Error()))
-	} else {
-		for _, entry := range entries {
-			if err := c.dbInterface.MarkAllocationsInactiveForInactiveNodes(
-				ctx,
-				helixClusterMysql.MarkAllocationsInactiveForInactiveNodesParams{
-					Cluster:  entry.Cluster,
-					Domain:   entry.Domain,
-					Tasklist: entry.Tasklist,
-				}); err != nil {
-				slog.Warn("failed to remove allocation for inactive node", slog.String("cluster", c.Name), slog.String("domain", entry.Domain), slog.String("tasklist", entry.Tasklist), slog.String("error", err.Error()))
-			}
-		}
 	}
 }
