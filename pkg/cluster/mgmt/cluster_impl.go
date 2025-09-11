@@ -76,6 +76,10 @@ func (c *clusterManagerImpl) GetClusterName() string {
 	return c.Name
 }
 
+func (c *clusterManagerImpl) GetClusterManagerConfig() ClusterManagerConfig {
+	return *c.clusterManagerConfig
+}
+
 func (c *clusterManagerImpl) BecomeClusterCoordinator(ctx context.Context) *lock.AcquireResponse {
 
 	// Acquire cluster controller lock to do this job

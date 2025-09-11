@@ -12,16 +12,24 @@ import (
 type ClusterManagerConfig struct {
 	// NodeHeartbeatInterval defines how often a node sends a heartbeat to the cluster.
 	NodeHeartbeatInterval time.Duration `json:"node_heartbeat_interval" yaml:"node_heartbeat_interval"`
+
 	// Name is the name of the cluster this manager belongs to.
 	Name string `json:"name" yaml:"name"`
+
 	// ControllerTtl defines the time-to-live for the cluster controller lock.
 	ControllerTtl time.Duration `json:"controller_ttl" yaml:"controller_ttl"`
+
+	// PartitionAllocationInterval defines the duration for each allocation interval e.g. how oftern we have
+	// to perform allocation
+	PartitionAllocationInterval time.Duration `json:"partition_allocation_interval" yaml:"partition_allocation_interval"`
 }
 
 // ClusterManager defines the interface for managing cluster nodes and coordinating cluster-wide operations.
 type ClusterManager interface {
 	// GetClusterName returns the name of the cluster managed by this ClusterManager.
 	GetClusterName() string
+
+	GetClusterManagerConfig() ClusterManagerConfig
 
 	// BecomeClusterCoordinator attempts to acquire the cluster coordinator lock.
 	// It returns an AcquireResponse indicating if the lock was acquired and by whom.

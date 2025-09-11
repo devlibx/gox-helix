@@ -17,7 +17,13 @@ func (c *coordinatorImpl) Start(ctx context.Context) error {
 		// Initial delay to allow cluster setup to complete
 		c.Sleep(3 * time.Second)
 
-		ticker := time.NewTicker(5 * time.Second) // Allocate every 5 seconds
+		// How often we have to calculate allocation
+		partitionAllocationInterval := 5 * time.Second
+		if c.clusterManager.GetClusterManagerConfig().PartitionAllocationInterval > 0 {
+			partitionAllocationInterval = c.NormalizeDuration(c.clusterManager.GetClusterManagerConfig().PartitionAllocationInterval)
+		}
+
+		ticker := time.NewTicker(partitionAllocationInterval) // Allocate every 5 seconds
 		defer ticker.Stop()
 
 		slog.Info("Coordinator allocation loop started", slog.String("cluster", clusterName))
