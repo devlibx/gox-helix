@@ -293,8 +293,8 @@ func (s *CoordinatorE2ETestSuite) TestPerformPartitionAllocation_SingleDomainTas
 	}()
 
 	ctx := context.Background()
-	domain := "test-domain"
-	taskList := "test-tasklist"
+	domain := "test-domain-" + uuid.NewString()
+	taskList := "test-tasklist-" + uuid.NewString()
 	partitionCount := 10
 
 	// Set coordinator to be leader
@@ -359,8 +359,8 @@ func (s *CoordinatorE2ETestSuite) TestPerformPartitionAllocation_AllocationManag
 	}()
 
 	ctx := context.Background()
-	domain := "test-domain"
-	taskList := "test-tasklist"
+	domain := "test-domain-" + uuid.NewString()
+	taskList := "test-tasklist-" + uuid.NewString()
 	partitionCount := 10
 
 	// Set coordinator to be leader
@@ -421,8 +421,8 @@ func (s *CoordinatorE2ETestSuite) TestPerformPartitionAllocation_CoordinatorStat
 	}()
 
 	ctx := context.Background()
-	domain := "test-domain"
-	taskList := "test-tasklist"
+	domain := "test-domain-" + uuid.NewString()
+	taskList := "test-tasklist-" + uuid.NewString()
 	partitionCount := 10
 
 	// Insert test cluster data
@@ -459,8 +459,8 @@ func (s *CoordinatorE2ETestSuite) TestPerformPartitionAllocation_TimeAdvancement
 	}()
 
 	ctx := context.Background()
-	domain := "test-domain"
-	taskList := "test-tasklist"
+	domain := "test-domain-" + uuid.NewString()
+	taskList := "test-tasklist-" + uuid.NewString()
 	partitionCount := 10
 
 	// Set coordinator to be leader

@@ -2,12 +2,14 @@ package allocation
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	goxJsonUtils "github.com/devlibx/gox-base/v2/serialization/utils/json"
 	managment "github.com/devlibx/gox-helix/pkg/cluster/mgmt"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/mysql/database"
+	"github.com/devlibx/gox-helix/pkg/common/database"
 )
 
 type AlgorithmV1 struct {
@@ -15,6 +17,7 @@ type AlgorithmV1 struct {
 	dbInterface               helixClusterMysql.Querier
 	dbInterfaceWithTxnSupport *helixClusterMysql.Queries
 	algorithmConfig           *managment.AlgorithmConfig
+	databaseConnectionHolder  database.ConnectionHolder
 }
 
 // NewAllocationAlgorithmV1 creates a new simplified allocation algorithm
@@ -23,12 +26,14 @@ func NewAllocationAlgorithmV1(
 	clusterDbInterface helixClusterMysql.Querier,
 	clusterDbInterfaceWithTxnSupport *helixClusterMysql.Queries,
 	algorithmConfig *managment.AlgorithmConfig,
+	databaseConnectionHolder database.ConnectionHolder,
 ) (managment.Algorithm, error) {
 	return &AlgorithmV1{
 		CrossFunction:             cf,
 		dbInterface:               clusterDbInterface,
 		dbInterfaceWithTxnSupport: clusterDbInterfaceWithTxnSupport,
 		algorithmConfig:           algorithmConfig,
+		databaseConnectionHolder:  databaseConnectionHolder,
 	}, nil
 }
 
@@ -42,7 +47,12 @@ func (a *AlgorithmV1) CalculateAllocation(ctx context.Context, taskListInfo mana
 
 	// Step 2 - get new distribution
 	_, newAssignments := a.calculateTargetDistribution(taskListInfo, partitionInfos, nodeStates)
-	_ = newAssignments
+	
+	// Step 3 - atomically update database with new assignments
+	err = a.updateDatabase(ctx, taskListInfo, newAssignments)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to update database")
+	}
 
 	return &managment.AllocationResponse{}, nil
 }
@@ -226,6 +236,7 @@ type nodeDistribution struct {
 
 func newNodeDistribution(cf gox.CrossFunction, maxAllowed int, nodeId string) *nodeDistribution {
 	return &nodeDistribution{
+		CrossFunction:                 cf,
 		maxAllowed:                    maxAllowed,
 		nodeId:                        nodeId,
 		partitionWithAssignedState:    make(map[string]*PartitionState),
@@ -240,6 +251,9 @@ func (d *nodeDistribution) getFinalResult() []*PartitionState {
 		result = append(result, nd)
 	}
 	for _, nd := range d.partitionWithReleaseState {
+		result = append(result, nd)
+	}
+	for _, nd := range d.partitionWithPlaceholderState {
 		result = append(result, nd)
 	}
 	return result
@@ -287,8 +301,7 @@ func (d *nodeDistribution) tryToAllocatePhase1(pi *PartitionState) bool {
 			return false // this is still not consumed -> it has to be assigned to other node (in placeholder state)
 		}
 
-	case managment.PartitionAllocationRequestedRelease:
-	case managment.PartitionAllocationPendingRelease:
+	case managment.PartitionAllocationRequestedRelease, managment.PartitionAllocationPendingRelease:
 		// We allow to add beyond max allowed for release (requested or pending)
 		// Track on original node but still needs placeholder elsewhere
 		d.partitionWithReleaseState[pi.PartitionID] = pi
@@ -308,9 +321,7 @@ func (d *nodeDistribution) tryToAllocatePhase2(pi *PartitionState, nodeId string
 
 	switch pi.Status {
 
-	case managment.PartitionAllocationAssigned:
-	case managment.PartitionAllocationRequestedRelease:
-	case managment.PartitionAllocationPendingRelease:
+	case managment.PartitionAllocationAssigned, managment.PartitionAllocationRequestedRelease, managment.PartitionAllocationPendingRelease:
 		if d.getTotalCapacityUsed() < d.maxAllowed && nodeId != pi.NodeID {
 			// If there is a partition which reached here means it does not have space in
 			// its original node
@@ -338,4 +349,77 @@ func (d *nodeDistribution) tryToAllocatePhase2(pi *PartitionState, nodeId string
 	}
 
 	return false
+}
+
+// updateDatabase writes the final assignments to the database using atomic transactions
+func (a *AlgorithmV1) updateDatabase(ctx context.Context, taskListInfo managment.TaskListInfo, newAssignments map[string][]*PartitionState) error {
+	
+	// Get database connection from holder
+	db := a.databaseConnectionHolder.GetHelixMasterDbConnection()
+	
+	// Begin transaction
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to begin transaction")
+	}
+	
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+	
+	// Create transaction-aware queries using SQLC pattern
+	qtx := a.dbInterfaceWithTxnSupport.WithTx(tx)
+	
+	// Update all nodes within transaction
+	for nodeID, partitions := range newAssignments {
+		err = a.updateNodeAllocation(ctx, qtx, taskListInfo, nodeID, partitions)
+		if err != nil {
+			return errors.Wrap(err, "failed to update allocation for node "+nodeID)
+		}
+	}
+	
+	return nil
+}
+
+// updateNodeAllocation updates the allocation for a single node within a transaction
+func (a *AlgorithmV1) updateNodeAllocation(ctx context.Context, qtx *helixClusterMysql.Queries, taskListInfo managment.TaskListInfo, nodeID string, partitions []*PartitionState) error {
+	
+	// Convert V3 PartitionState to database format
+	allocation := &managment.Allocation{
+		Cluster:                  taskListInfo.Cluster,
+		Domain:                   taskListInfo.Domain,
+		TaskList:                 taskListInfo.TaskList,
+		NodeId:                   nodeID,
+		PartitionAllocationInfos: make([]managment.PartitionAllocationInfo, 0, len(partitions)),
+	}
+	
+	// Convert each PartitionState to PartitionAllocationInfo
+	for _, partition := range partitions {
+		allocation.PartitionAllocationInfos = append(allocation.PartitionAllocationInfos, 
+			managment.PartitionAllocationInfo{
+				PartitionId:      partition.PartitionID,
+				AllocationStatus: partition.Status, // Preserves assigned/request_release/pending_release
+				UpdatedTime:      partition.UpdatedTime,
+			})
+	}
+	
+	// Serialize to JSON
+	allocationJSON, err := goxJsonUtils.ObjectToString(allocation)
+	if err != nil {
+		return errors.Wrap(err, "failed to serialize allocation")
+	}
+	
+	// Use transaction-aware queries for atomic update
+	return qtx.UpsertAllocation(ctx, helixClusterMysql.UpsertAllocationParams{
+		Cluster:       taskListInfo.Cluster,
+		Domain:        taskListInfo.Domain,
+		Tasklist:      taskListInfo.TaskList,
+		NodeID:        nodeID,
+		PartitionInfo: allocationJSON,
+		Metadata:      sql.NullString{Valid: true, String: "{}"},
+	})
 }
