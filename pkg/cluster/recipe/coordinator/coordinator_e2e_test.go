@@ -219,6 +219,14 @@ func (m *MockClusterManager) GetActiveNodes(ctx context.Context) ([]managment.No
 	}, nil
 }
 
+func (m *MockClusterManager) GetClusterManagerConfig() managment.ClusterManagerConfig {
+	return managment.ClusterManagerConfig{
+		Name:                  m.clusterName,
+		NodeHeartbeatInterval: time.Second,
+		ControllerTtl:         30 * time.Second,
+	}
+}
+
 type MockAllocationManager struct {
 	shouldFail bool
 	callCount  int

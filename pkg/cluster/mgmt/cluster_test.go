@@ -161,20 +161,13 @@ func (s *ServiceTestSuite) TestSimulateHbFailAndReregister() {
 		}
 	}
 
-	gotNodeReregistered := false
-	for i := 0; i < 5; i++ {
-		nodes, err = cm.GetActiveNodes(context.Background())
-		if len(nodes) == 1 {
-			gotNodeReregistered = true
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
-	s.Require().True(gotNodeReregistered, "We should never get this node reregistered")
-
+	// After removing automatic re-registration, nodes should NOT automatically re-register
+	// Wait a bit to ensure no automatic re-registration occurs
+	time.Sleep(2 * time.Second)
+	
 	nodes, err = cm.GetActiveNodes(context.Background())
-	s.Require().Len(nodes, 1)
-	s.Require().False(nr.NodeId == nodes[0].Id, "old and new id must not be same")
+	s.Require().NoError(err, "Failed to get active nodes")
+	s.Require().Len(nodes, 0, "No nodes should be active after deregistration - automatic re-registration was removed")
 }
 
 func TestServiceTestSuite(t *testing.T) {

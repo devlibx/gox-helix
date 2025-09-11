@@ -144,36 +144,19 @@ func (c *clusterManagerImpl) RegisterNode(ctx context.Context, request NodeRegis
 	go func() {
 		runLoop := true
 		for runLoop {
+
+			// Break if we need to shut down
 			if c.shutdown {
 				runLoop = false
 				return
 			}
 
 			if err := c.startHeartbeatForNode(ctx, c.nodes[nodeId]); errors2.Is(err, errorReregistrationNeeded) {
-
-				if true {
-					c.nodeMutex.Lock()
-					delete(c.nodes, nodeId)
-					c.nodeMutex.Unlock()
-
-					ch <- &NodeRegisterChannel{ErrorReregistrationNeeded: true}
-					return
-				}
-
 				c.nodeMutex.Lock()
 				delete(c.nodes, nodeId)
 				c.nodeMutex.Unlock()
-				for {
-					if _, err := c.RegisterNode(ctx, request); err == nil {
-						slog.Info(nodeId, "node registered successfully", slog.String("cluster", c.Name), slog.String("nodeId", nodeId))
-						break
-					} else {
-						c.Sleep(1 * time.Second)
-					}
-				}
-				runLoop = false
+				ch <- &NodeRegisterChannel{ErrorReregistrationNeeded: true}
 			}
-
 			runLoop = false
 		}
 

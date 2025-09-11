@@ -204,6 +204,7 @@ func (h *V3AlgorithmE2ETestHelper) runV3Algorithm(partitionCount int) error {
 		h.setup.db,
 		&managment.AlgorithmConfig{},
 		h.setup.connHolder,
+		nil, // clusterManager - nil for tests (coordinator lock validation will be skipped)
 	)
 	if err != nil {
 		return err
