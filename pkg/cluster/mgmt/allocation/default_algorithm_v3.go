@@ -12,20 +12,23 @@ import (
 
 type AlgorithmV1 struct {
 	gox.CrossFunction
-	dbInterface     helixClusterMysql.Querier
-	algorithmConfig *managment.AlgorithmConfig
+	dbInterface               helixClusterMysql.Querier
+	dbInterfaceWithTxnSupport *helixClusterMysql.Queries
+	algorithmConfig           *managment.AlgorithmConfig
 }
 
 // NewAllocationAlgorithmV1 creates a new simplified allocation algorithm
 func NewAllocationAlgorithmV1(
 	cf gox.CrossFunction,
 	clusterDbInterface helixClusterMysql.Querier,
+	clusterDbInterfaceWithTxnSupport *helixClusterMysql.Queries,
 	algorithmConfig *managment.AlgorithmConfig,
 ) (managment.Algorithm, error) {
 	return &AlgorithmV1{
-		CrossFunction:   cf,
-		dbInterface:     clusterDbInterface,
-		algorithmConfig: algorithmConfig,
+		CrossFunction:             cf,
+		dbInterface:               clusterDbInterface,
+		dbInterfaceWithTxnSupport: clusterDbInterfaceWithTxnSupport,
+		algorithmConfig:           algorithmConfig,
 	}, nil
 }
 

@@ -43,7 +43,7 @@ func NewSimpleAllocationAlgorithm(
 // PartitionState represents the current state of a partition
 type PartitionState struct {
 	PartitionID string
-	NodeID      string                            // empty if unassigned
+	NodeID      string // empty if unassigned
 	Status      managment.PartitionAllocationStatus
 	UpdatedTime time.Time
 }
@@ -62,34 +62,34 @@ type NodeState struct {
 
 // CalculateAllocation implements the core allocation logic with 5 simple steps
 func (s *SimpleAllocationAlgorithm) CalculateAllocation(ctx context.Context, taskListInfo managment.TaskListInfo) (*managment.AllocationResponse, error) {
-	
+
 	// Step 1: Get current state from database
 	partitionStates, nodeStates, err := s.getCurrentState(ctx, taskListInfo)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get current state")
 	}
-	
+
 	// Step 2: Resolve conflicts (deterministic winner selection)
 	s.resolveConflicts(partitionStates)
-	
+
 	// Step 3: Calculate target distribution
 	targetAssignments := s.calculateTargetDistribution(taskListInfo, nodeStates)
-	
+
 	// Step 4: Perform minimal rebalancing
 	finalAssignments := s.performRebalancing(partitionStates, targetAssignments, nodeStates)
-	
+
 	// Step 5: Update database with new assignments
 	err = s.updateDatabase(ctx, taskListInfo, finalAssignments)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to update database")
 	}
-	
+
 	return &managment.AllocationResponse{}, nil
 }
 
 // getCurrentState extracts current partition and node states from the database
 func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskListInfo managment.TaskListInfo) (map[string]*PartitionState, map[string]*NodeState, error) {
-	
+
 	// Get current allocations
 	allocations, err := s.dbInterface.GetAllocationsForTasklist(ctx, helixClusterMysql.GetAllocationsForTasklistParams{
 		Cluster:  taskListInfo.Cluster,
@@ -99,13 +99,13 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get allocations")
 	}
-	
+
 	// Get active nodes
 	nodes, err := s.dbInterface.GetActiveNodes(ctx, taskListInfo.Cluster)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get active nodes")
 	}
-	
+
 	// Initialize node states
 	nodeStates := make(map[string]*NodeState)
 	for _, node := range nodes {
@@ -115,7 +115,7 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 			PartitionIDs: make([]string, 0),
 		}
 	}
-	
+
 	// Initialize partition states (all partitions start as unassigned)
 	partitionStates := make(map[string]*PartitionState)
 	for i := 0; i < taskListInfo.PartitionCount; i++ {
@@ -127,23 +127,23 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 			UpdatedTime: s.Now(),
 		}
 	}
-	
+
 	// Parse existing allocations with conflict resolution
 	duplicateAssignments := make([]string, 0)
-	
+
 	for _, allocation := range allocations {
 		allocInfo, err := goxJsonUtils.BytesToObject[dbPartitionAllocationInfos]([]byte(allocation.PartitionInfo))
 		if err != nil {
 			continue // Skip malformed allocation data
 		}
-		
+
 		for _, partitionInfo := range allocInfo.PartitionAllocationInfos {
 			partitionID := partitionInfo.PartitionId
 			nodeID := allocation.NodeID
-			
+
 			// Only process known partitions
 			if partition, exists := partitionStates[partitionID]; exists {
-				
+
 				// Handle partitions stuck in release state (force reassign)
 				if partitionInfo.AllocationStatus == managment.PartitionAllocationRequestedRelease ||
 					partitionInfo.AllocationStatus == managment.PartitionAllocationPendingRelease {
@@ -153,13 +153,13 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 						continue
 					}
 				}
-				
+
 				// Only consider assignments to active nodes
 				nodeState, nodeExists := nodeStates[nodeID]
 				if !nodeExists || !nodeState.IsActive {
 					continue // Skip inactive nodes
 				}
-				
+
 				if partitionInfo.AllocationStatus == managment.PartitionAllocationAssigned {
 					// Check for conflict (partition already assigned to another node)
 					if partition.NodeID != "" && partition.NodeID != nodeID {
@@ -171,9 +171,9 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 							Status:      partitionInfo.AllocationStatus,
 							UpdatedTime: partitionInfo.UpdatedTime,
 						}
-						
+
 						var winner, loser *PartitionState
-						
+
 						// Rule 1: Prefer more recent timestamp
 						if candidate.UpdatedTime.After(existing.UpdatedTime) {
 							winner, loser = candidate, existing
@@ -187,17 +187,17 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 								winner, loser = candidate, existing
 							}
 						}
-						
+
 						// Update partition with winner
 						partition.NodeID = winner.NodeID
 						partition.Status = winner.Status
 						partition.UpdatedTime = winner.UpdatedTime
-						
+
 						// Update node assignments
 						if winner.NodeID == nodeID {
 							nodeState.PartitionIDs = append(nodeState.PartitionIDs, partitionID)
 						}
-						
+
 						// Safe string truncation for logging
 						winnerShort := winner.NodeID
 						if len(winnerShort) > 8 {
@@ -207,11 +207,11 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 						if len(loserShort) > 8 {
 							loserShort = loserShort[:8]
 						}
-						
+
 						duplicateAssignments = append(duplicateAssignments,
 							fmt.Sprintf("partition %s: kept node %s, conflicted with node %s",
 								partitionID, winnerShort, loserShort))
-								
+
 					} else {
 						// No conflict, assign normally
 						partition.NodeID = nodeID
@@ -223,12 +223,12 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 			}
 		}
 	}
-	
+
 	// Log conflicts for debugging
 	if len(duplicateAssignments) > 0 {
 		slog.Debug("⚠️  Resolved duplicate partition assignments during state loading", "count", len(duplicateAssignments))
 	}
-	
+
 	return partitionStates, nodeStates, nil
 }
 
@@ -236,20 +236,20 @@ func (s *SimpleAllocationAlgorithm) getCurrentState(ctx context.Context, taskLis
 func (s *SimpleAllocationAlgorithm) resolveConflicts(partitionStates map[string]*PartitionState) {
 	// Track which partitions have multiple assignments
 	partitionToNodes := make(map[string][]string)
-	
+
 	// Build conflict map
 	for partitionID, state := range partitionStates {
 		if state.NodeID != "" && state.Status == managment.PartitionAllocationAssigned {
 			partitionToNodes[partitionID] = append(partitionToNodes[partitionID], state.NodeID)
 		}
 	}
-	
+
 	// Resolve conflicts by choosing lexicographically smallest node ID (deterministic)
 	for partitionID, nodeIDs := range partitionToNodes {
 		if len(nodeIDs) > 1 {
 			sort.Strings(nodeIDs) // Deterministic ordering
 			winnerNodeID := nodeIDs[0]
-			
+
 			// Update partition state to keep only the winner
 			partitionStates[partitionID].NodeID = winnerNodeID
 			partitionStates[partitionID].Status = managment.PartitionAllocationAssigned
@@ -259,7 +259,7 @@ func (s *SimpleAllocationAlgorithm) resolveConflicts(partitionStates map[string]
 
 // calculateTargetDistribution computes optimal partition distribution across active nodes
 func (s *SimpleAllocationAlgorithm) calculateTargetDistribution(taskListInfo managment.TaskListInfo, nodeStates map[string]*NodeState) map[string][]string {
-	
+
 	// Get list of active nodes
 	activeNodes := make([]string, 0)
 	for nodeID, nodeState := range nodeStates {
@@ -268,29 +268,29 @@ func (s *SimpleAllocationAlgorithm) calculateTargetDistribution(taskListInfo man
 		}
 	}
 	sort.Strings(activeNodes) // Consistent ordering
-	
+
 	targetAssignments := make(map[string][]string)
-	
+
 	// If no active nodes, return empty assignments
 	if len(activeNodes) == 0 {
 		return targetAssignments
 	}
-	
+
 	// Calculate target distribution
 	basePartitionsPerNode := taskListInfo.PartitionCount / len(activeNodes)
 	remainder := taskListInfo.PartitionCount % len(activeNodes)
-	
+
 	// Distribute partitions evenly
 	partitionIndex := 0
 	for i, nodeID := range activeNodes {
 		targetAssignments[nodeID] = make([]string, 0)
-		
+
 		// First 'remainder' nodes get one extra partition
 		targetCount := basePartitionsPerNode
 		if i < remainder {
 			targetCount++
 		}
-		
+
 		// Assign partitions to this node
 		for j := 0; j < targetCount && partitionIndex < taskListInfo.PartitionCount; j++ {
 			partitionID := fmt.Sprintf("%d", partitionIndex)
@@ -298,13 +298,13 @@ func (s *SimpleAllocationAlgorithm) calculateTargetDistribution(taskListInfo man
 			partitionIndex++
 		}
 	}
-	
+
 	return targetAssignments
 }
 
 // performRebalancing moves partitions to achieve target distribution with minimal movement
 func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[string]*PartitionState, targetAssignments map[string][]string, nodeStates map[string]*NodeState) map[string][]string {
-	
+
 	// Create final assignment map
 	finalAssignments := make(map[string][]string)
 	for nodeID := range nodeStates {
@@ -312,15 +312,15 @@ func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[strin
 			finalAssignments[nodeID] = make([]string, 0)
 		}
 	}
-	
+
 	// Track which partitions need new assignments
 	unassignedPartitions := make([]string, 0)
-	
+
 	// First pass: keep partitions that are already correctly assigned
 	for nodeID, targetPartitions := range targetAssignments {
 		for _, partitionID := range targetPartitions {
 			partition := partitionStates[partitionID]
-			
+
 			// If partition is already assigned to this node, keep it
 			if partition.NodeID == nodeID && partition.Status == managment.PartitionAllocationAssigned {
 				finalAssignments[nodeID] = append(finalAssignments[nodeID], partitionID)
@@ -330,13 +330,13 @@ func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[strin
 			}
 		}
 	}
-	
+
 	// Second pass: assign unassigned partitions to nodes with capacity
 	unassignedIndex := 0
 	for nodeID, targetPartitions := range targetAssignments {
 		currentCount := len(finalAssignments[nodeID])
 		targetCount := len(targetPartitions)
-		
+
 		// Fill remaining capacity
 		for currentCount < targetCount && unassignedIndex < len(unassignedPartitions) {
 			partitionID := unassignedPartitions[unassignedIndex]
@@ -345,18 +345,18 @@ func (s *SimpleAllocationAlgorithm) performRebalancing(partitionStates map[strin
 			unassignedIndex++
 		}
 	}
-	
+
 	return finalAssignments
 }
 
 // updateDatabase writes the final assignments to the database
 func (s *SimpleAllocationAlgorithm) updateDatabase(ctx context.Context, taskListInfo managment.TaskListInfo, finalAssignments map[string][]string) error {
-	
+
 	for nodeID, partitionIDs := range finalAssignments {
 		// Process ALL nodes, including those with empty assignments
 		// This ensures that nodes that lost partitions due to conflict resolution
 		// get their old allocation records cleared by upserting empty partition lists
-		
+
 		// Create allocation object
 		allocation := &managment.Allocation{
 			Cluster:                  taskListInfo.Cluster,
@@ -365,7 +365,7 @@ func (s *SimpleAllocationAlgorithm) updateDatabase(ctx context.Context, taskList
 			NodeId:                   nodeID,
 			PartitionAllocationInfos: make([]managment.PartitionAllocationInfo, 0, len(partitionIDs)),
 		}
-		
+
 		// Add partition allocation info
 		for _, partitionID := range partitionIDs {
 			allocation.PartitionAllocationInfos = append(allocation.PartitionAllocationInfos, managment.PartitionAllocationInfo{
@@ -374,13 +374,13 @@ func (s *SimpleAllocationAlgorithm) updateDatabase(ctx context.Context, taskList
 				UpdatedTime:      s.Now(),
 			})
 		}
-		
+
 		// Serialize allocation data
 		allocationJSON, err := goxJsonUtils.ObjectToString(allocation)
 		if err != nil {
 			return errors.Wrap(err, "failed to serialize allocation")
 		}
-		
+
 		// Upsert allocation in database
 		err = s.dbInterface.UpsertAllocation(ctx, helixClusterMysql.UpsertAllocationParams{
 			Cluster:       taskListInfo.Cluster,
@@ -394,6 +394,6 @@ func (s *SimpleAllocationAlgorithm) updateDatabase(ctx context.Context, taskList
 			return errors.Wrap(err, "failed to upsert allocation for node "+nodeID)
 		}
 	}
-	
+
 	return nil
 }
