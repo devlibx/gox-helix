@@ -60,6 +60,7 @@ func (a *AlgorithmV1) CalculateAllocation(ctx context.Context, taskListInfo mana
 func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managment.TaskListInfo) (map[string]*PartitionState, map[string]*NodeState, error) {
 
 	// Get current allocations
+	// Note - we may get nodes which are not active i.e. may be not cleaned-up as of now
 	allocations, err := a.dbInterface.GetAllocationsForTasklist(ctx, helixClusterMysql.GetAllocationsForTasklistParams{
 		Cluster:  taskListInfo.Cluster,
 		Domain:   taskListInfo.Domain,
@@ -108,16 +109,28 @@ func (a *AlgorithmV1) getCurrentState(ctx context.Context, taskListInfo managmen
 			partitionID := partitionInfo.PartitionId
 			nodeID := allocation.NodeID
 
-			// Only consider assignments to active nodes
-			if nodeState, nodeExists := nodeStates[nodeID]; !nodeExists || !nodeState.IsActive {
-				continue // Skip inactive nodes (we don't care what partitions are with inactive nodes)
-			}
-
 			// Only process known partitions
 			var partition *PartitionState
 			var exists bool
 			if partition, exists = partitionStates[partitionID]; !exists {
 				continue // Skip invalid partitions ids
+			}
+
+			// Only consider assignments to active nodes
+			if nodeState, nodeExists := nodeStates[nodeID]; !nodeExists || !nodeState.IsActive {
+
+				// Add this as an inactive node
+				nodeStates[partition.NodeID] = &NodeState{
+					NodeID:       partition.NodeID,
+					IsActive:     false,
+					PartitionIDs: []string{},
+				}
+
+				// Make sure these partitions are considered as unsigned
+				partition.Status = managment.PartitionAllocationUnassigned
+				partition.NodeID = ""
+
+				continue // Skip inactive nodes (we don't care what partitions are with inactive nodes)
 			}
 
 			// Handle partitions stuck in release state (force reassign)
@@ -220,6 +233,13 @@ func (a *AlgorithmV1) calculateTargetDistribution(
 	result := make(map[string][]*PartitionState)
 	for _, nd := range nodeDistributions {
 		result[nd.nodeId] = nd.getFinalResult()
+	}
+
+	// Add blank partitions for inactive nodes if we found - so that we can clean up partitions
+	for _, nodeState := range nodeStates {
+		if !nodeState.IsActive {
+			result[nodeState.NodeID] = make([]*PartitionState, 0)
+		}
 	}
 
 	return nodeDistributions, result
