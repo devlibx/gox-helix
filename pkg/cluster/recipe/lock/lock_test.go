@@ -1,9 +1,10 @@
-package coordinator
+package locker
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"log/slog"
 	"os"
 	"testing"
@@ -46,12 +47,12 @@ func setupDb(t *testing.T) *testIndo {
 		fx.Provide(func() databaseCommon.ConnectionHolder {
 			return databaseCommon.NewConnectionHolder(db)
 		}),
-		fx.Provide(NewCoordinatorDataLayer),
+		fx.Provide(coordinator.NewCoordinatorDataLayer),
 		fx.Provide(NewLock),
 		fx.Populate(&locker),
 
 		fx.Provide(func() gox.CrossFunction {
-			return gox.NewCrossFunction(NewMockTimeService(now))
+			return gox.NewCrossFunction(databaseCommon.NewMockTimeService(now))
 		}),
 	)
 	err = app.Start(ctx)

@@ -1,16 +1,17 @@
-package coordinator
+package locker
 
 import (
 	"context"
 	"database/sql"
 	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/database"
 	errors2 "github.com/pkg/errors"
 )
 
 type lockImpl struct {
 	gox.CrossFunction
-	dataLayer *DataLayer
+	dataLayer *coordinator.DataLayer
 }
 
 func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*AcquireLockResponse, error) {
@@ -66,7 +67,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 	}, nil
 }
 
-func NewLock(cf gox.CrossFunction, dataLayer *DataLayer) (Locker, error) {
+func NewLock(cf gox.CrossFunction, dataLayer *coordinator.DataLayer) (Locker, error) {
 	return &lockImpl{
 		CrossFunction: cf,
 		dataLayer:     dataLayer,
