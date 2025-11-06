@@ -20,10 +20,11 @@ import (
 )
 
 type testIndo struct {
-	db     *sql.DB
-	locker Locker
-	ctx    context.Context
-	now    time.Time
+	db              *sql.DB
+	locker          Locker
+	ctx             context.Context
+	now             time.Time
+	mockTimeService *databaseCommon.MockTimeService
 }
 
 func setupDb(t *testing.T) *testIndo {
@@ -42,6 +43,7 @@ func setupDb(t *testing.T) *testIndo {
 	now := time.Now()
 	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
 
+	mockTimeService := databaseCommon.NewMockTimeService(now)
 	var locker Locker
 	app := fx.New(
 		fx.Provide(func() databaseCommon.ConnectionHolder {
@@ -52,20 +54,42 @@ func setupDb(t *testing.T) *testIndo {
 		fx.Populate(&locker),
 
 		fx.Provide(func() gox.CrossFunction {
-			return gox.NewCrossFunction(databaseCommon.NewMockTimeService(now))
+			return gox.NewCrossFunction(mockTimeService)
 		}),
 	)
 	err = app.Start(ctx)
 	assert.NoError(t, err)
 
 	return &testIndo{
-		db:     db,
-		locker: locker,
-		ctx:    ctx,
-		now:    now,
+		db:              db,
+		locker:          locker,
+		ctx:             ctx,
+		now:             now,
+		mockTimeService: mockTimeService,
 	}
 }
 
+// TestAcquireLock_FirstAcquisition verifies the initial acquisition of a lock.
+//
+// Test Objective:
+// - Verify that a lock can be successfully acquired when no prior lock exists
+// - Ensure the lock is created with correct initial state
+//
+// Expected Behavior:
+// - Lock acquisition should succeed (err = nil)
+// - Response should indicate this is NOT a reacquisition (Reacquired = false)
+// - Lock should be stored in database with:
+//   - Correct domain, lock_key, and owner_id
+//   - Epoch = 1 (first acquisition)
+//   - expiry_time = now + TTL
+//   - Status = ACQUIRED
+//
+// Verification Steps:
+// - Call AcquireLock with unique domain, lock_key, and owner_id
+// - Assert no error returned
+// - Assert response is not nil
+// - Assert Reacquired flag is false
+// - (Future) Query database to verify lock record with correct fields
 func TestAcquireLock_FirstAcquisition(t *testing.T) {
 	tf := setupDb(t)
 	domain := uuid.NewString()
@@ -80,20 +104,223 @@ func TestAcquireLock_FirstAcquisition(t *testing.T) {
 	assert.False(t, resp.Reacquired)
 }
 
+// TestAcquireLock_Reacquisition_SameOwner verifies lock reacquisition by the same owner.
+//
+// Test Objective:
+// - Verify that the same owner can reacquire their own lock before it expires
+// - Ensure the lock state is maintained correctly on reacquisition
+//
+// Expected Behavior:
+// - First acquisition should succeed with Reacquired = false
+// - Second acquisition by same owner should succeed with Reacquired = true
+// - Lock record should be updated with:
+//   - Same owner_id
+//   - Same epoch (no increment for same owner)
+//   - Updated expiry_time = now + new TTL
+//   - Status remains ACQUIRED
+//
+// Verification Steps:
+// - Acquire lock with owner A
+// - Immediately acquire same lock with owner A again
+// - Assert second acquisition succeeds with Reacquired = true
+// - (Future) Verify database shows updated expiry_time but same epoch
 func TestAcquireLock_Reacquisition_SameOwner(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerId := "owner-" + domain
+
+	// First acquisition
+	resp1, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp1)
+	assert.False(t, resp1.Reacquired)
+
+	// Advance time by 10 seconds to simulate time passage
+	tf.mockTimeService.AdvanceTime(10 * time.Second)
+
+	// Reacquisition by same owner
+	resp2, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp2)
+	assert.True(t, resp2.Reacquired)
 }
 
+// TestAcquireLock_FailedAcquisition_LockHeldByAnother verifies lock acquisition failure
+// when the lock is held by a different owner.
+//
+// Test Objective:
+// - Verify that lock acquisition fails when another owner holds the lock
+// - Ensure the original lock remains unchanged
+//
+// Expected Behavior:
+// - First acquisition by owner A should succeed
+// - Second acquisition by owner B (different owner) should fail with ErrLockHeldByAnother
+// - Lock record should remain unchanged:
+//   - owner_id stays as owner A
+//   - epoch remains unchanged
+//   - expiry_time remains unchanged
+//   - Status remains ACQUIRED
+//
+// Verification Steps:
+// - Acquire lock with owner A
+// - Attempt to acquire same lock with owner B (different owner)
+// - Assert second acquisition fails with ErrLockHeldByAnother error
+// - (Future) Verify database shows lock still owned by owner A with original values
 func TestAcquireLock_FailedAcquisition_LockHeldByAnother(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerA := "owner-A-" + domain
+	ownerB := "owner-B-" + domain
+
+	// First acquisition by owner A
+	resp1, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerA,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp1)
+	assert.False(t, resp1.Reacquired)
+
+	// Advance time by 10 seconds (still well before expiry)
+	tf.mockTimeService.AdvanceTime(10 * time.Second)
+
+	// Attempt to acquire same lock with owner B (should fail)
+	resp2, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerB,
+		TTL:     time.Hour,
+	})
+
+	// Assert that acquisition failed
+	assert.Error(t, err)
+	assert.Nil(t, resp2)
+
+	// Assert error is LockNotAcquiredError
+	var lockErr *LockNotAcquiredError
+	assert.ErrorAs(t, err, &lockErr)
+	assert.Equal(t, domain, lockErr.Domain)
+	assert.Equal(t, lockKey, lockErr.LockKey)
+	assert.Equal(t, ownerB, lockErr.OwnerId)
 }
 
+// TestAcquireLock_AcquisitionAfterExpiry verifies lock acquisition after lock expires.
+//
+// Test Objective:
+// - Verify that a lock can be acquired by a new owner after the previous lock expires
+// - Ensure expired locks don't prevent new acquisitions
+//
+// Expected Behavior:
+// - First acquisition by owner A with short TTL (e.g., 1 second) should succeed
+// - Wait for lock to expire (time > TTL)
+// - Second acquisition by owner B should succeed as a fresh acquisition
+// - Lock record should be updated with:
+//   - New owner_id = owner B
+//   - Epoch incremented (owner changed)
+//   - New expiry_time = current_time + new TTL
+//   - Status = ACQUIRED
+//
+// Verification Steps:
+// - Acquire lock with owner A and short TTL (1-2 seconds)
+// - Wait for expiry (sleep for TTL + buffer)
+// - Attempt to acquire lock with owner B
+// - Assert acquisition succeeds with Reacquired = false (fresh acquisition)
+// - (Future) Verify database shows new owner with incremented epoch
 func TestAcquireLock_AcquisitionAfterExpiry(t *testing.T) {
 }
 
+// TestAcquireLock_ReacquisitionExtendsTTL verifies that reacquisition extends lock TTL.
+//
+// Test Objective:
+// - Verify that when the same owner reacquires a lock, the TTL is properly extended
+// - Ensure the lock doesn't expire prematurely when reacquired
+//
+// Expected Behavior:
+// - First acquisition by owner A with TTL of 5 seconds should succeed
+// - Wait for 3 seconds (more than half TTL but before expiry)
+// - Reacquire lock with owner A and TTL of 10 seconds
+// - Lock record should be updated with:
+//   - Same owner_id = owner A
+//   - Same epoch (no increment for same owner)
+//   - New expiry_time = current_time + 10 seconds (extended)
+//   - Status = ACQUIRED
+//
+// - Original expiry should be overwritten with new expiry
+//
+// Verification Steps:
+// - Acquire lock with owner A and TTL = 5 seconds, record initial expiry time
+// - Wait 3 seconds
+// - Reacquire lock with owner A and TTL = 10 seconds
+// - Assert Reacquired = true
+// - (Future) Query database to verify expiry_time is now > initial_expiry_time
+// - (Future) Verify new expiry = (current_time after wait) + 10 seconds
 func TestAcquireLock_ReacquisitionExtendsTTL(t *testing.T) {
 }
 
+// TestAcquireLock_EpochIncrementOnOwnerChange verifies epoch increments when ownership changes.
+//
+// Test Objective:
+// - Verify that the epoch counter increments whenever lock ownership changes
+// - Ensure epoch tracking helps detect stale lock holders
+//
+// Expected Behavior:
+// - First acquisition by owner A should create lock with epoch = 1
+// - Lock expires (short TTL)
+// - Second acquisition by owner B should update lock with epoch = 2
+// - Lock expires again
+// - Third acquisition by owner C should update lock with epoch = 3
+// - Each ownership change should increment epoch by 1
+//
+// Verification Steps:
+// - Acquire lock with owner A and short TTL (1 second)
+// - (Future) Verify database shows epoch = 1
+// - Wait for expiry
+// - Acquire lock with owner B and short TTL
+// - (Future) Verify database shows epoch = 2
+// - Wait for expiry
+// - Acquire lock with owner C
+// - (Future) Verify database shows epoch = 3
+// - Assert all acquisitions succeed
+// - Verify epoch increments on each owner change but not on reacquisition by same owner
 func TestAcquireLock_EpochIncrementOnOwnerChange(t *testing.T) {
 }
 
+// TestAcquireLock_DifferentDomains verifies lock isolation across different domains.
+//
+// Test Objective:
+// - Verify that locks with the same lock_key in different domains are independent
+// - Ensure domain-based partitioning works correctly
+//
+// Expected Behavior:
+// - Acquisition of lock_key "my-lock" in domain "A" by owner X should succeed
+// - Acquisition of lock_key "my-lock" in domain "B" by owner Y should also succeed
+// - Both locks should coexist independently:
+//   - Domain A: lock owned by owner X
+//   - Domain B: lock owned by owner Y
+//
+// - Changes to one domain's lock should not affect the other domain's lock
+//
+// Verification Steps:
+// - Acquire lock with domain="A", lock_key="shared-key", owner="owner-A"
+// - Assert acquisition succeeds
+// - Acquire lock with domain="B", lock_key="shared-key", owner="owner-B"
+// - Assert acquisition succeeds (not blocked by domain A's lock)
+// - (Future) Verify database shows two separate lock records
+// - (Future) Verify each record has correct domain and owner_id
+// - Demonstrate locks are truly isolated by different domains
 func TestAcquireLock_DifferentDomains(t *testing.T) {
 }

@@ -1,6 +1,7 @@
 package databaseCommon
 
 import (
+	"github.com/devlibx/gox-base/v2"
 	"sync"
 	"time"
 )
@@ -8,6 +9,7 @@ import (
 type MockTimeService struct {
 	mu          sync.RWMutex
 	currentTime time.Time
+	gox.TimeService
 }
 
 func NewMockTimeService(initialTime time.Time) *MockTimeService {

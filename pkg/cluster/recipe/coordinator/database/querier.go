@@ -16,22 +16,22 @@ type Querier interface {
 	//      (domain, lock_key, owner_id, expires_at, epoch, status)
 	//  VALUES (?, ?, ?, ?, 1, 1)
 	//  ON DUPLICATE KEY UPDATE
+	//      status = IF((@original_owner_id := owner_id) IS NOT NULL, 1, 1),
 	//      owner_id = IF(
-	//          owner_id = VALUES(owner_id) OR expires_at < ?,
+	//          @original_owner_id = VALUES(owner_id) OR expires_at < ?,
 	//          VALUES(owner_id),
 	//          owner_id
 	//      ),
 	//      expires_at = IF(
-	//          owner_id = VALUES(owner_id) OR expires_at < ?,
+	//          @original_owner_id = VALUES(owner_id) OR expires_at < ?,
 	//          VALUES(expires_at),
 	//          expires_at
 	//      ),
 	//      epoch = IF(
-	//          owner_id != VALUES(owner_id) AND expires_at < ?,
+	//          @original_owner_id != VALUES(owner_id) AND expires_at < ?,
 	//          epoch + 1,
 	//          epoch
-	//      ),
-	//      status = 1
+	//      )
 	AcquireLock(ctx context.Context, arg AcquireLockParams) (sql.Result, error)
 	//GetDomainByDomainAndTasklist
 	//

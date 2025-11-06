@@ -25,7 +25,6 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 		ExpiresAt:   expiresAt,
 		ExpiresAt_2: now,
 		ExpiresAt_3: now,
-		ExpiresAt_4: now,
 	})
 	if err != nil {
 		return nil, &LockNotAcquiredWithUnknowError{
@@ -36,14 +35,17 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 		}
 	}
 
-	if rowsAffected, err := result.RowsAffected(); err != nil {
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
 		return nil, &LockNotAcquiredWithUnknowError{
 			Domain:  req.Domain,
 			LockKey: req.LockKey,
 			OwnerId: req.OwnerId,
 			Err:     err,
 		}
-	} else if rowsAffected == 0 {
+	}
+
+	if rowsAffected == 0 {
 		return nil, &LockNotAcquiredError{
 			Domain:  req.Domain,
 			LockKey: req.LockKey,
@@ -61,7 +63,11 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 		}
 	}
 
-	reacquired := lastInsertId == 0
+	// Why row affected is 2 in case of update on existing lock. Given below is from MySQL
+	// 1 for the attempted insert, and
+	// 1 for the row actually updated.
+	reacquired := rowsAffected == 2
+	_ = lastInsertId
 	return &AcquireLockResponse{
 		Reacquired: reacquired,
 	}, nil
