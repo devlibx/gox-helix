@@ -20,14 +20,14 @@ func (e *LockNotAcquiredError) Error() string {
 	return fmt.Sprintf("lock not acquired: domain=%s, lockKey=%s, ownerId=%s", e.Domain, e.LockKey, e.OwnerId)
 }
 
-type LockNotAcquiredWithUnknowError struct {
+type LockNotAcquiredWithUnknownError struct {
 	Domain  string
 	LockKey string
 	OwnerId string
 	Err     error
 }
 
-func (e *LockNotAcquiredWithUnknowError) Error() string {
+func (e *LockNotAcquiredWithUnknownError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("lock not acquired with unknown error: domain=%s, lockKey=%s, ownerId=%s, err=%s", e.Domain, e.LockKey, e.OwnerId, e.Err.Error())
 	}

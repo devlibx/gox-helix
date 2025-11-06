@@ -26,7 +26,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 		Column7:   now,
 	})
 	if err != nil {
-		return nil, &LockNotAcquiredWithUnknowError{
+		return nil, &LockNotAcquiredWithUnknownError{
 			Domain:  req.Domain,
 			LockKey: req.LockKey,
 			OwnerId: req.OwnerId,
@@ -36,7 +36,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return nil, &LockNotAcquiredWithUnknowError{
+		return nil, &LockNotAcquiredWithUnknownError{
 			Domain:  req.Domain,
 			LockKey: req.LockKey,
 			OwnerId: req.OwnerId,
