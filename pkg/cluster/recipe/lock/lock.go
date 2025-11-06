@@ -42,7 +42,6 @@ type AcquireLockRequest struct {
 }
 
 type AcquireLockResponse struct {
-	Reacquired bool
 }
 
 type Locker interface {

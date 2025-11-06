@@ -101,7 +101,6 @@ func TestAcquireLock_FirstAcquisition(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
-	assert.False(t, resp.Reacquired)
 }
 
 // TestAcquireLock_Reacquisition_SameOwner verifies lock reacquisition by the same owner.
@@ -139,7 +138,6 @@ func TestAcquireLock_Reacquisition_SameOwner(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, resp1)
-	assert.False(t, resp1.Reacquired)
 
 	// Advance time by 10 seconds to simulate time passage
 	tf.mockTimeService.AdvanceTime(10 * time.Second)
@@ -153,7 +151,6 @@ func TestAcquireLock_Reacquisition_SameOwner(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, resp2)
-	assert.True(t, resp2.Reacquired)
 }
 
 // TestAcquireLock_FailedAcquisition_LockHeldByAnother verifies lock acquisition failure
@@ -193,7 +190,6 @@ func TestAcquireLock_FailedAcquisition_LockHeldByAnother(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, resp1)
-	assert.False(t, resp1.Reacquired)
 
 	// Advance time by 10 seconds (still well before expiry)
 	tf.mockTimeService.AdvanceTime(10 * time.Second)
@@ -241,6 +237,34 @@ func TestAcquireLock_FailedAcquisition_LockHeldByAnother(t *testing.T) {
 // - Assert acquisition succeeds with Reacquired = false (fresh acquisition)
 // - (Future) Verify database shows new owner with incremented epoch
 func TestAcquireLock_AcquisitionAfterExpiry(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerA := "owner-A-" + domain
+	ownerB := "owner-B-" + domain
+
+	// First acquisition by owner A with short TTL
+	resp1, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerA,
+		TTL:     10 * time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp1)
+
+	// Advance time past the TTL to let the lock expire
+	tf.mockTimeService.AdvanceTime(11 * time.Second)
+
+	// Acquisition by owner B after expiry (should succeed as fresh acquisition)
+	resp2, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerB,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp2)
 }
 
 // TestAcquireLock_ReacquisitionExtendsTTL verifies that reacquisition extends lock TTL.
@@ -269,6 +293,33 @@ func TestAcquireLock_AcquisitionAfterExpiry(t *testing.T) {
 // - (Future) Query database to verify expiry_time is now > initial_expiry_time
 // - (Future) Verify new expiry = (current_time after wait) + 10 seconds
 func TestAcquireLock_ReacquisitionExtendsTTL(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerId := "owner-" + domain
+
+	// First acquisition with TTL of 10 seconds
+	resp1, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+		TTL:     10 * time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp1)
+
+	// Advance time by 5 seconds (half TTL, still before expiry)
+	tf.mockTimeService.AdvanceTime(5 * time.Second)
+
+	// Reacquisition by same owner with extended TTL of 20 seconds
+	resp2, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+		TTL:     20 * time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp2)
 }
 
 // TestAcquireLock_EpochIncrementOnOwnerChange verifies epoch increments when ownership changes.
@@ -297,6 +348,83 @@ func TestAcquireLock_ReacquisitionExtendsTTL(t *testing.T) {
 // - Assert all acquisitions succeed
 // - Verify epoch increments on each owner change but not on reacquisition by same owner
 func TestAcquireLock_EpochIncrementOnOwnerChange(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerA := "owner-A-" + domain
+	ownerB := "owner-B-" + domain
+	ownerC := "owner-C-" + domain
+
+	// First acquisition by owner A with short TTL
+	resp1, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerA,
+		TTL:     5 * time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp1)
+
+	// Query database to verify epoch = 1
+	var epoch1 uint64
+	err = tf.db.QueryRow("SELECT epoch FROM helix_locks WHERE lock_key = ? AND status = 1", lockKey).Scan(&epoch1)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), epoch1)
+
+	// Advance time past TTL to let lock expire
+	tf.mockTimeService.AdvanceTime(6 * time.Second)
+
+	// Second acquisition by owner B (different owner after expiry)
+	resp2, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerB,
+		TTL:     5 * time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp2)
+
+	// Query database to verify epoch = 2 (incremented due to owner change)
+	var epoch2 uint64
+	err = tf.db.QueryRow("SELECT epoch FROM helix_locks WHERE lock_key = ? AND status = 1", lockKey).Scan(&epoch2)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(2), epoch2)
+
+	// Advance time past TTL again
+	tf.mockTimeService.AdvanceTime(6 * time.Second)
+
+	// Third acquisition by owner C (another owner change)
+	resp3, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerC,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp3)
+
+	// Query database to verify epoch = 3 (incremented again)
+	var epoch3 uint64
+	err = tf.db.QueryRow("SELECT epoch FROM helix_locks WHERE lock_key = ? AND status = 1", lockKey).Scan(&epoch3)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(3), epoch3)
+
+	// Verify reacquisition by same owner does NOT increment epoch
+	tf.mockTimeService.AdvanceTime(10 * time.Second)
+	resp4, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerC, // Same owner as before
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp4)
+
+	// Query database to verify epoch is still 3 (no increment for same owner)
+	var epoch4 uint64
+	err = tf.db.QueryRow("SELECT epoch FROM helix_locks WHERE lock_key = ? AND status = 1", lockKey).Scan(&epoch4)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(3), epoch4)
 }
 
 // TestAcquireLock_DifferentDomains verifies lock isolation across different domains.
@@ -323,4 +451,64 @@ func TestAcquireLock_EpochIncrementOnOwnerChange(t *testing.T) {
 // - (Future) Verify each record has correct domain and owner_id
 // - Demonstrate locks are truly isolated by different domains
 func TestAcquireLock_DifferentDomains(t *testing.T) {
+	tf := setupDb(t)
+	sharedLockKey := "shared-lock-key-" + uuid.NewString()
+	domainA := "domain-A-" + uuid.NewString()
+	domainB := "domain-B-" + uuid.NewString()
+	ownerA := "owner-A"
+	ownerB := "owner-B"
+
+	// Acquire lock in domain A
+	resp1, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domainA,
+		LockKey: sharedLockKey,
+		OwnerId: ownerA,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp1)
+
+	// Acquire lock with same lock_key in domain B (should succeed independently)
+	resp2, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domainB,
+		LockKey: sharedLockKey,
+		OwnerId: ownerB,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp2)
+
+	// Verify both locks exist in database with correct domains and owners
+	var ownerIdA, domainAFromDb string
+	err = tf.db.QueryRow("SELECT domain, owner_id FROM helix_locks WHERE lock_key = ? AND domain = ? AND status = 1", sharedLockKey, domainA).Scan(&domainAFromDb, &ownerIdA)
+	assert.NoError(t, err)
+	assert.Equal(t, domainA, domainAFromDb)
+	assert.Equal(t, ownerA, ownerIdA)
+
+	var ownerIdB, domainBFromDb string
+	err = tf.db.QueryRow("SELECT domain, owner_id FROM helix_locks WHERE lock_key = ? AND domain = ? AND status = 1", sharedLockKey, domainB).Scan(&domainBFromDb, &ownerIdB)
+	assert.NoError(t, err)
+	assert.Equal(t, domainB, domainBFromDb)
+	assert.Equal(t, ownerB, ownerIdB)
+
+	// Attempt to acquire domain A's lock with a different owner (should fail - lock held)
+	resp3, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domainA,
+		LockKey: sharedLockKey,
+		OwnerId: "owner-different",
+		TTL:     time.Hour,
+	})
+	assert.Error(t, err)
+	assert.Nil(t, resp3)
+
+	// Reacquire domain B's lock with same owner B (should succeed)
+	tf.mockTimeService.AdvanceTime(10 * time.Second)
+	resp4, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domainB,
+		LockKey: sharedLockKey,
+		OwnerId: ownerB,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp4)
 }

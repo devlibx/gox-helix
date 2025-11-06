@@ -2,6 +2,8 @@ module github.com/devlibx/gox-helix
 
 go 1.23.1
 
+replace github.com/devlibx/gox-base/v2 => /Users/harishbohara/workplace/personal/gox-base
+
 require (
 	github.com/devlibx/gox-base/v2 v2.0.31
 	github.com/go-sql-driver/mysql v1.7.1
