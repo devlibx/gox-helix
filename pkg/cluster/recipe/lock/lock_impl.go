@@ -3,8 +3,8 @@ package locker
 import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/cluster"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/cluster/database"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
+	helixDomainMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/domain/database"
 )
 
 type lockImpl struct {
@@ -16,7 +16,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 	now := l.Now()
 	expiresAt := now.Add(req.TTL)
 
-	result, err := l.dataLayer.AcquireLock(ctx, helixClusterMysql.AcquireLockParams{
+	result, err := l.dataLayer.AcquireLock(ctx, helixDomainMysql.AcquireLockParams{
 		Domain:    req.Domain,
 		LockKey:   req.LockKey,
 		OwnerID:   req.OwnerId,
