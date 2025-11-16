@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
-	workerDatabase "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/google/uuid"
 )
 
@@ -12,18 +11,18 @@ type mysqlWorker struct {
 	gox.CrossFunction
 	id         string
 	config     Config
-	db         *workerDatabase.Queries
+	dataLayer  *DataLayer
 	stopChan   chan struct{}
 	cancelFunc context.CancelFunc
 }
 
 // NewWorker is the constructor for the mysqlWorker.
-func NewWorker(cf gox.CrossFunction, config Config, db *workerDatabase.Queries) Worker {
+func NewWorker(cf gox.CrossFunction, config Config, dataLayer *DataLayer) Worker {
 	return &mysqlWorker{
 		CrossFunction: cf,
 		id:            uuid.NewString(),
 		config:        config,
-		db:            db,
+		dataLayer:     dataLayer,
 		stopChan:      make(chan struct{}),
 	}
 }

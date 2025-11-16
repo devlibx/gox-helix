@@ -12,7 +12,6 @@ import (
 	"github.com/devlibx/gox-helix"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
-	workerDatabase "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/fx"
@@ -54,10 +53,9 @@ func main() {
 		fx.Provide(domain.NewDomain),
 
 		// Provide Worker components
-		fx.Provide(func(db databaseCommon.ConnectionHolder) (*workerDatabase.Queries, error) {
-			return workerDatabase.Prepare(context.Background(), db.GetHelixMasterDbConnection())
-		}),
+		fx.Provide(worker.NewWorkerDataLayer),
 		fx.Provide(worker.NewWorker),
+		
 		fx.Provide(func() worker.Config {
 			return worker.Config{
 				Domain:            "example-domain",
