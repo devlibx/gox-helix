@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"log/slog"
 	"os"
 	"testing"
@@ -49,13 +48,12 @@ func setupDb(t *testing.T) *testIndo {
 		fx.Provide(func() databaseCommon.ConnectionHolder {
 			return databaseCommon.NewConnectionHolder(db)
 		}),
-		fx.Provide(domain.NewDomainDataLayer),
-		fx.Provide(NewLock),
-		fx.Populate(&locker),
-
 		fx.Provide(func() gox.CrossFunction {
 			return gox.NewCrossFunction(mockTimeService)
 		}),
+		fx.Provide(NewLockerDataLayer),
+		fx.Provide(NewLock),
+		fx.Populate(&locker),
 	)
 	err = app.Start(ctx)
 	assert.NoError(t, err)

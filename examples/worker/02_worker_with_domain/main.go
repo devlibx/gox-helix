@@ -11,10 +11,9 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
+	workerDatabase "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
-	"github.com/devlibx/gox-helix/pkg/worker"
-	worker_mysql "github.com/devlibx/gox-helix/pkg/worker/mysql"
-	worker_database "github.com/devlibx/gox-helix/pkg/worker/mysql/database"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/fx"
 )
@@ -41,7 +40,6 @@ func main() {
 			return sql.Open("mysql", url)
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
-		fx.Provide(func() worker.TimeService { return &RealTimeService{} }),
 
 		// Provide Domain components
 		fx.Provide(func() domain.Config {
@@ -55,12 +53,17 @@ func main() {
 		fx.Provide(domain.NewDomainDataLayer),
 		fx.Provide(domain.NewDomain),
 
-		// Provide Worker components from the mysql implementation
-		fx.Provide(worker_mysql.NewWorkerConfigFromEnv),
-		fx.Provide(func(db databaseCommon.ConnectionHolder) *worker_database.Queries {
-			return worker_database.New(db.GetHelixMasterDbConnection())
+		// Provide Worker components
+		fx.Provide(func(db databaseCommon.ConnectionHolder) (*workerDatabase.Queries, error) {
+			return workerDatabase.Prepare(context.Background(), db.GetHelixMasterDbConnection())
 		}),
-		fx.Provide(worker_mysql.NewMySqlWorker),
+		fx.Provide(worker.NewWorker),
+		fx.Provide(func() worker.Config {
+			return worker.Config{
+				Domain:            "example-domain",
+				HeartbeatInterval: 10 * time.Second,
+			}
+		}),
 
 		// Run the application
 		fx.Invoke(func(lc fx.Lifecycle, d domain.Domain, w worker.Worker) {

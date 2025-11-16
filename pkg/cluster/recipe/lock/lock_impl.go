@@ -3,20 +3,19 @@ package locker
 import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
-	helixDomainMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/domain/database"
+	helixLockMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock/database"
 )
 
 type lockImpl struct {
 	gox.CrossFunction
-	dataLayer *domain.DataLayer
+	dataLayer *DataLayer
 }
 
 func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*AcquireLockResponse, error) {
 	now := l.Now()
 	expiresAt := now.Add(req.TTL)
 
-	result, err := l.dataLayer.AcquireLock(ctx, helixDomainMysql.AcquireLockParams{
+	result, err := l.dataLayer.AcquireLock(ctx, helixLockMysql.AcquireLockParams{
 		Domain:    req.Domain,
 		LockKey:   req.LockKey,
 		OwnerID:   req.OwnerId,
@@ -55,7 +54,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 	return &AcquireLockResponse{}, nil
 }
 
-func NewLock(cf gox.CrossFunction, dataLayer *domain.DataLayer) (Locker, error) {
+func NewLock(cf gox.CrossFunction, dataLayer *DataLayer) (Locker, error) {
 	return &lockImpl{
 		CrossFunction: cf,
 		dataLayer:     dataLayer,

@@ -19,27 +19,3 @@ type HelixDomain struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
-
-type HelixLock struct {
-	ID        uint64    `json:"id"`
-	Domain    string    `json:"domain"`
-	LockKey   string    `json:"lock_key"`
-	OwnerID   string    `json:"owner_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Epoch     uint64    `json:"epoch"`
-	Status    int8      `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type HelixWorker struct {
-	ID         uint64         `json:"id"`
-	Domain     string         `json:"domain"`
-	UniqueID   string         `json:"unique_id"`
-	Metadata   sql.NullString `json:"metadata"`
-	LastHbTime time.Time      `json:"last_hb_time"`
-	Status     int8           `json:"status"`
-	Version    uint32         `json:"version"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-}

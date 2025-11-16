@@ -1,32 +1,30 @@
-package mysql
+package worker
 
 import (
 	"context"
-	"github.com/devlibx/gox-helix/pkg/worker"
-	"github.com/devlibx/gox-helix/pkg/worker/mysql/database"
+	"github.com/devlibx/gox-base/v2"
+	workerDatabase "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/google/uuid"
-	"go.uber.org/fx"
 )
 
 // mysqlWorker is the MySQL-based implementation of the worker.Worker interface.
 type mysqlWorker struct {
+	gox.CrossFunction
 	id         string
-	config     worker.Config
-	db         *database.Queries
-	timeSvc    worker.TimeService
+	config     Config
+	db         *workerDatabase.Queries
 	stopChan   chan struct{}
 	cancelFunc context.CancelFunc
 }
 
-// NewMySqlWorker is the constructor for the mysqlWorker.
-// It is designed to be used with go-fx for dependency injection.
-func NewMySqlWorker(config worker.Config, db *database.Queries, timeSvc worker.TimeService) worker.Worker {
+// NewWorker is the constructor for the mysqlWorker.
+func NewWorker(cf gox.CrossFunction, config Config, db *workerDatabase.Queries) Worker {
 	return &mysqlWorker{
-		id:       uuid.NewString(),
-		config:   config,
-		db:       db,
-		timeSvc:  timeSvc,
-		stopChan: make(chan struct{}),
+		CrossFunction: cf,
+		id:            uuid.NewString(),
+		config:        config,
+		db:            db,
+		stopChan:      make(chan struct{}),
 	}
 }
 
@@ -50,16 +48,3 @@ func (m *mysqlWorker) Stop() {
 func (m *mysqlWorker) ID() string {
 	return m.id
 }
-
-// NewWorkerConfigFromEnv is a go-fx provider that creates a worker.Config
-// from environment variables.
-func NewWorkerConfigFromEnv() (worker.Config, error) {
-	// Implementation to read from os.Getenv() will be added here.
-	return worker.Config{}, nil
-}
-
-// FxModule is the fx.Option that provides all the necessary components for the mysql worker.
-var FxModule = fx.Options(
-	fx.Provide(NewMySqlWorker),
-	fx.Provide(NewWorkerConfigFromEnv),
-)

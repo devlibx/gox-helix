@@ -8,75 +8,7 @@ package helixDomainMysql
 import (
 	"context"
 	"database/sql"
-	"time"
 )
-
-const acquireLock = `-- name: AcquireLock :execresult
-INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_locks
-    (domain, lock_key, owner_id, expires_at, epoch, status)
-VALUES (?, ?, ?, ?, 1, 1)
-ON DUPLICATE KEY UPDATE
-    status = IF((@original_owner_id := owner_id) IS NOT NULL AND (@original_expires_at := expires_at) IS NOT NULL, 1, 1),
-    owner_id = IF(
-        @original_owner_id = VALUES(owner_id) OR @original_expires_at < ?,
-        VALUES(owner_id),
-        owner_id
-    ),
-    expires_at = IF(
-        @original_owner_id = VALUES(owner_id) OR @original_expires_at < ?,
-        VALUES(expires_at),
-        expires_at
-    ),
-    epoch = IF(
-        @original_owner_id != VALUES(owner_id) AND @original_expires_at < ?,
-        epoch + 1,
-        epoch
-    )
-`
-
-type AcquireLockParams struct {
-	Domain    string      `json:"domain"`
-	LockKey   string      `json:"lock_key"`
-	OwnerID   string      `json:"owner_id"`
-	ExpiresAt time.Time   `json:"expires_at"`
-	Column5   interface{} `json:"column_5"`
-	Column6   interface{} `json:"column_6"`
-	Column7   interface{} `json:"column_7"`
-}
-
-// AcquireLock
-//
-//	INSERT /*+ MAX_EXECUTION_TIME(1000) */ INTO helix_locks
-//	    (domain, lock_key, owner_id, expires_at, epoch, status)
-//	VALUES (?, ?, ?, ?, 1, 1)
-//	ON DUPLICATE KEY UPDATE
-//	    status = IF((@original_owner_id := owner_id) IS NOT NULL AND (@original_expires_at := expires_at) IS NOT NULL, 1, 1),
-//	    owner_id = IF(
-//	        @original_owner_id = VALUES(owner_id) OR @original_expires_at < ?,
-//	        VALUES(owner_id),
-//	        owner_id
-//	    ),
-//	    expires_at = IF(
-//	        @original_owner_id = VALUES(owner_id) OR @original_expires_at < ?,
-//	        VALUES(expires_at),
-//	        expires_at
-//	    ),
-//	    epoch = IF(
-//	        @original_owner_id != VALUES(owner_id) AND @original_expires_at < ?,
-//	        epoch + 1,
-//	        epoch
-//	    )
-func (q *Queries) AcquireLock(ctx context.Context, arg AcquireLockParams) (sql.Result, error) {
-	return q.exec(ctx, q.acquireLockStmt, acquireLock,
-		arg.Domain,
-		arg.LockKey,
-		arg.OwnerID,
-		arg.ExpiresAt,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-	)
-}
 
 const getDomainByDomainAndTasklist = `-- name: GetDomainByDomainAndTasklist :one
 SELECT /*+ MAX_EXECUTION_TIME(1000) */
@@ -189,34 +121,6 @@ func (q *Queries) GetDomainsByDomain(ctx context.Context, domain string) ([]*Hel
 		return nil, err
 	}
 	return items, nil
-}
-
-const insertDomainWorker = `-- name: InsertDomainWorker :exec
-INSERT /*+ MAX_EXECUTION_TIME(1000) */
-INTO helix_worker (domain, unique_id, metadata, last_hb_time, status, version)
-VALUES (?, ?, ?, ?, 1, 1)
-`
-
-type InsertDomainWorkerParams struct {
-	Domain     string         `json:"domain"`
-	UniqueID   string         `json:"unique_id"`
-	Metadata   sql.NullString `json:"metadata"`
-	LastHbTime time.Time      `json:"last_hb_time"`
-}
-
-// InsertDomainWorker
-//
-//	INSERT /*+ MAX_EXECUTION_TIME(1000) */
-//	INTO helix_worker (domain, unique_id, metadata, last_hb_time, status, version)
-//	VALUES (?, ?, ?, ?, 1, 1)
-func (q *Queries) InsertDomainWorker(ctx context.Context, arg InsertDomainWorkerParams) error {
-	_, err := q.exec(ctx, q.insertDomainWorkerStmt, insertDomainWorker,
-		arg.Domain,
-		arg.UniqueID,
-		arg.Metadata,
-		arg.LastHbTime,
-	)
-	return err
 }
 
 const upsertTasklist = `-- name: UpsertTasklist :exec

@@ -1,4 +1,4 @@
-package domain
+package worker
 
 type MySqlConfig struct {
 	Database             string `yaml:"database"`

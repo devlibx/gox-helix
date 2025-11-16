@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.26.0
 
-package database
+package helixWorkerMysql
 
 import (
 	"database/sql"
@@ -10,10 +10,10 @@ import (
 )
 
 type HelixWorker struct {
-	ID              sql.NullInt64
-	WorkerID        string
-	Domain          string
-	Status          string
-	CreatedAt       time.Time
-	LastHeartbeatAt time.Time
+	ID              sql.NullInt64 `json:"id"`
+	WorkerID        string        `json:"worker_id"`
+	Domain          string        `json:"domain"`
+	Status          string        `json:"status"`
+	CreatedAt       time.Time     `json:"created_at"`
+	LastHeartbeatAt time.Time     `json:"last_heartbeat_at"`
 }

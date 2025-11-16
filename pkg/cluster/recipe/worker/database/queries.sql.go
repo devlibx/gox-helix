@@ -3,7 +3,7 @@
 //   sqlc v1.26.0
 // source: queries.sql
 
-package database
+package helixWorkerMysql
 
 import (
 	"context"
@@ -16,12 +16,16 @@ WHERE domain = ? AND worker_id = ?
 `
 
 type GetWorkerStatusParams struct {
-	Domain   string
-	WorkerID string
+	Domain   string `json:"domain"`
+	WorkerID string `json:"worker_id"`
 }
 
+// GetWorkerStatus
+//
+//	SELECT status FROM helix_workers
+//	WHERE domain = ? AND worker_id = ?
 func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getWorkerStatus, arg.Domain, arg.WorkerID)
+	row := q.queryRow(ctx, q.getWorkerStatusStmt, getWorkerStatus, arg.Domain, arg.WorkerID)
 	var status string
 	err := row.Scan(&status)
 	return status, err
@@ -33,14 +37,18 @@ VALUES (?, ?, 'active', ?, ?)
 `
 
 type RegisterWorkerParams struct {
-	WorkerID        string
-	Domain          string
-	CreatedAt       time.Time
-	LastHeartbeatAt time.Time
+	WorkerID        string    `json:"worker_id"`
+	Domain          string    `json:"domain"`
+	CreatedAt       time.Time `json:"created_at"`
+	LastHeartbeatAt time.Time `json:"last_heartbeat_at"`
 }
 
+// RegisterWorker
+//
+//	INSERT INTO helix_workers (worker_id, domain, status, created_at, last_heartbeat_at)
+//	VALUES (?, ?, 'active', ?, ?)
 func (q *Queries) RegisterWorker(ctx context.Context, arg RegisterWorkerParams) error {
-	_, err := q.db.ExecContext(ctx, registerWorker,
+	_, err := q.exec(ctx, q.registerWorkerStmt, registerWorker,
 		arg.WorkerID,
 		arg.Domain,
 		arg.CreatedAt,
@@ -56,12 +64,17 @@ WHERE domain = ? AND worker_id = ? AND status = 'active'
 `
 
 type SendHeartbeatParams struct {
-	LastHeartbeatAt time.Time
-	Domain          string
-	WorkerID        string
+	LastHeartbeatAt time.Time `json:"last_heartbeat_at"`
+	Domain          string    `json:"domain"`
+	WorkerID        string    `json:"worker_id"`
 }
 
+// SendHeartbeat
+//
+//	UPDATE helix_workers
+//	SET last_heartbeat_at = ?
+//	WHERE domain = ? AND worker_id = ? AND status = 'active'
 func (q *Queries) SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) error {
-	_, err := q.db.ExecContext(ctx, sendHeartbeat, arg.LastHeartbeatAt, arg.Domain, arg.WorkerID)
+	_, err := q.exec(ctx, q.sendHeartbeatStmt, sendHeartbeat, arg.LastHeartbeatAt, arg.Domain, arg.WorkerID)
 	return err
 }

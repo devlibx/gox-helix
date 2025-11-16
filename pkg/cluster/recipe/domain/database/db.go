@@ -24,17 +24,11 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.acquireLockStmt, err = db.PrepareContext(ctx, acquireLock); err != nil {
-		return nil, fmt.Errorf("error preparing query AcquireLock: %w", err)
-	}
 	if q.getDomainByDomainAndTasklistStmt, err = db.PrepareContext(ctx, getDomainByDomainAndTasklist); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDomainByDomainAndTasklist: %w", err)
 	}
 	if q.getDomainsByDomainStmt, err = db.PrepareContext(ctx, getDomainsByDomain); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDomainsByDomain: %w", err)
-	}
-	if q.insertDomainWorkerStmt, err = db.PrepareContext(ctx, insertDomainWorker); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertDomainWorker: %w", err)
 	}
 	if q.upsertTasklistStmt, err = db.PrepareContext(ctx, upsertTasklist); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTasklist: %w", err)
@@ -44,11 +38,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
-	if q.acquireLockStmt != nil {
-		if cerr := q.acquireLockStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing acquireLockStmt: %w", cerr)
-		}
-	}
 	if q.getDomainByDomainAndTasklistStmt != nil {
 		if cerr := q.getDomainByDomainAndTasklistStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getDomainByDomainAndTasklistStmt: %w", cerr)
@@ -57,11 +46,6 @@ func (q *Queries) Close() error {
 	if q.getDomainsByDomainStmt != nil {
 		if cerr := q.getDomainsByDomainStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getDomainsByDomainStmt: %w", cerr)
-		}
-	}
-	if q.insertDomainWorkerStmt != nil {
-		if cerr := q.insertDomainWorkerStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertDomainWorkerStmt: %w", cerr)
 		}
 	}
 	if q.upsertTasklistStmt != nil {
@@ -108,10 +92,8 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                               DBTX
 	tx                               *sql.Tx
-	acquireLockStmt                  *sql.Stmt
 	getDomainByDomainAndTasklistStmt *sql.Stmt
 	getDomainsByDomainStmt           *sql.Stmt
-	insertDomainWorkerStmt           *sql.Stmt
 	upsertTasklistStmt               *sql.Stmt
 }
 
@@ -119,10 +101,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                               tx,
 		tx:                               tx,
-		acquireLockStmt:                  q.acquireLockStmt,
 		getDomainByDomainAndTasklistStmt: q.getDomainByDomainAndTasklistStmt,
 		getDomainsByDomainStmt:           q.getDomainsByDomainStmt,
-		insertDomainWorkerStmt:           q.insertDomainWorkerStmt,
 		upsertTasklistStmt:               q.upsertTasklistStmt,
 	}
 }
