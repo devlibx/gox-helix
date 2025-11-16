@@ -7,20 +7,19 @@ A Go project.
 - Design documents are located in the doc/design folder.
 - The implementation_details.md file contains information about the implementation of the framework.
 
-## Current Work Status
+## Worker Component Development
 
-We are currently refactoring the distributed locking mechanism into a generic, reusable Go package. This involves:
+We are building a new, resilient `worker` component for task execution and coordination.
 
-1.  **New Package Structure:** The lock implementation is now located under `pkg/common/lock`, with MySQL-specific details in `pkg/common/lock/database/mysql`.
-2.  **Schema Updates:** The `locks` table has been renamed to `helix_locks` and a new `status` column (ENUM: `active`, `inactive`, `deletable`) has been added to manage lock states.
-3.  **SQLC Configuration:** `sqlc.yaml` and `queries.sql` have been updated for the new lock package, and `RETURNING` clauses were removed for MySQL compatibility.
-4.  **Interface Definition:** A `Locker` interface has been defined in `pkg/common/lock/lock.go` to abstract the locking operations.
+### High-Level Plan:
+1.  **New Package Structure:** The worker component is split into an interface and a MySQL implementation:
+    *   `pkg/worker/`: Defines the abstract `Worker` interface.
+    *   `pkg/worker/mysql/`: Provides the concrete MySQL-based implementation.
 
-## Next Steps
+2.  **Database Schema:** A new `helix_workers` table will be created to register and track workers. It will be partitioned by the `created_at` month to ensure long-term performance.
 
-To continue, we need to:
+3.  **Documentation:**
+    *   A new `pkg/worker/GEMINI.md` file will store concepts and context for the worker component.
+    *   This root `GEMINI.md` file will track the high-level project status.
 
-1.  **Update Lock Queries:** Modify `pkg/common/lock/database/mysql/queries.sql` to incorporate the `status` column and add queries for status transitions.
-2.  **Regenerate SQLC Code:** Run `sqlc generate` for the updated lock package.
-3.  **Implement Locker Interface:** Implement the `Locker` interface in `pkg/common/lock/database/mysql/lock.go` using the `sqlc`-generated code.
-4.  **Write Detailed Tests:** Develop comprehensive end-to-end tests for the lock package in `pkg/common/lock/database/mysql/lock_test.go`, using a real MySQL database and environment variables for configuration.
+4.  **Examples:** A new `examples/` directory at the project root will provide runnable examples for all helix components. The worker examples will demonstrate `go-fx` dependency injection and integration with the `domain` component.
