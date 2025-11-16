@@ -6,13 +6,23 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	helixDomainMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/domain/database"
+	"github.com/google/uuid"
 )
 
 type domainImpl struct {
 	gox.CrossFunction
-	dataLayer DataLayer
+	dataLayer *DataLayer
 	config    Config
 	nodeId    string
+}
+
+func NewDomain(cf gox.CrossFunction, dataLayer *DataLayer, config Config) (Domain, error) {
+	return &domainImpl{
+		CrossFunction: cf,
+		dataLayer:     dataLayer,
+		config:        config,
+		nodeId:        uuid.NewString(),
+	}, nil
 }
 
 func (s *domainImpl) Init(ctx context.Context) error {
@@ -26,7 +36,6 @@ func (s *domainImpl) Init(ctx context.Context) error {
 		if err != nil {
 			return errors.Wrap(err, "failed to upsert domain=%s, taskList=%s", s.config.Domain, taskList.Name)
 		}
-		return nil
 	}
 	return nil
 }
