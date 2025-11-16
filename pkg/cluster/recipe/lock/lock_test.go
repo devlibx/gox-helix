@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/cluster"
 	"log/slog"
 	"os"
 	"testing"
@@ -49,7 +49,7 @@ func setupDb(t *testing.T) *testIndo {
 		fx.Provide(func() databaseCommon.ConnectionHolder {
 			return databaseCommon.NewConnectionHolder(db)
 		}),
-		fx.Provide(coordinator.NewCoordinatorDataLayer),
+		fx.Provide(domain.NewCoordinatorDataLayer),
 		fx.Provide(NewLock),
 		fx.Populate(&locker),
 

@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.26.0
 
-package helixClusterMysql
+package helixDomainMysql
 
 import (
 	"database/sql"

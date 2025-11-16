@@ -1,4 +1,4 @@
-package coordinator
+package domain
 
 type MySqlConfig struct {
 	Database             string `yaml:"database"`

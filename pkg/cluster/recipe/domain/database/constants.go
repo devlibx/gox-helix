@@ -1,4 +1,4 @@
-package helixClusterMysql
+package helixDomainMysql
 
 // Worker status constants
 const (

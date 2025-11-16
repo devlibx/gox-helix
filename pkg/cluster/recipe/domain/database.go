@@ -1,21 +1,21 @@
-package coordinator
+package domain
 
 import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
-	helixClusterMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/database"
+	helixDomainMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/domain/database"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 )
 
 type DataLayer struct {
 	gox.CrossFunction
-	helixClusterMysql.Querier
-	queries *helixClusterMysql.Queries
+	helixDomainMysql.Querier
+	queries *helixDomainMysql.Queries
 }
 
-func NewCoordinatorDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder) (*DataLayer, error) {
-	q, err := helixClusterMysql.Prepare(context.Background(), ch.GetHelixMasterDbConnection())
+func NewDomainDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder) (*DataLayer, error) {
+	q, err := helixDomainMysql.Prepare(context.Background(), ch.GetHelixMasterDbConnection())
 	if err != nil {
 		return nil, errors.Wrap(err, "error in connecting to database  - failed to call prepare helix coordinator database")
 	}
