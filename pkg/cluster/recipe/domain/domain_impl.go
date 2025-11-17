@@ -16,7 +16,7 @@ type domainImpl struct {
 	nodeId    string
 }
 
-func NewDomain(cf gox.CrossFunction, dataLayer *DataLayer, config Config) (Domain, error) {
+func NewService(cf gox.CrossFunction, dataLayer *DataLayer, config Config) (Service, error) {
 	return &domainImpl{
 		CrossFunction: cf,
 		dataLayer:     dataLayer,

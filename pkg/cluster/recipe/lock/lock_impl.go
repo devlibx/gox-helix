@@ -54,7 +54,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 	return &AcquireLockResponse{}, nil
 }
 
-func NewLock(cf gox.CrossFunction, dataLayer *DataLayer) (Locker, error) {
+func NewLocker(cf gox.CrossFunction, dataLayer *DataLayer) (Locker, error) {
 	return &lockImpl{
 		CrossFunction: cf,
 		dataLayer:     dataLayer,

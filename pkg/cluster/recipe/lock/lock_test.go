@@ -52,7 +52,7 @@ func setupDb(t *testing.T) *testIndo {
 			return gox.NewCrossFunction(mockTimeService)
 		}),
 		fx.Provide(NewLockerDataLayer),
-		fx.Provide(NewLock),
+		fx.Provide(NewLocker),
 		fx.Populate(&locker),
 	)
 	err = app.Start(ctx)

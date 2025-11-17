@@ -3,6 +3,7 @@ package helix
 import (
 	"bufio"
 	_ "embed"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -44,4 +45,14 @@ func SetupTestEnv() {
 			slog.Debug("Setting env variable from dev env file", parts[0], parts[1])
 		}
 	}
+}
+
+func GetDefaultSqlUrl() string {
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	dbName := os.Getenv("DB_NAME")
+	url := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, dbName)
+	return url
 }

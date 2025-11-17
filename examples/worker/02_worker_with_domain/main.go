@@ -40,7 +40,7 @@ func main() {
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
-		// Provide Domain components
+		// Provide Service components
 		fx.Provide(func() domain.Config {
 			return domain.Config{
 				Domain: "example-domain",
@@ -50,12 +50,12 @@ func main() {
 			}
 		}),
 		fx.Provide(domain.NewDomainDataLayer),
-		fx.Provide(domain.NewDomain),
+		fx.Provide(domain.NewService),
 
 		// Provide Worker components
 		fx.Provide(worker.NewWorkerDataLayer),
 		fx.Provide(worker.NewWorker),
-		
+
 		fx.Provide(func() worker.Config {
 			return worker.Config{
 				Domain:            "example-domain",
@@ -64,7 +64,7 @@ func main() {
 		}),
 
 		// Run the application
-		fx.Invoke(func(lc fx.Lifecycle, d domain.Domain, w worker.Worker) {
+		fx.Invoke(func(lc fx.Lifecycle, d domain.Service, w worker.Worker) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					log.Println("### Starting Application ###")
@@ -73,7 +73,7 @@ func main() {
 					if err := d.Init(ctx); err != nil {
 						log.Fatalf("failed to init domain: %v", err)
 					}
-					log.Println("Domain initialized successfully")
+					log.Println("Service initialized successfully")
 
 					// Start the worker
 					go func() {

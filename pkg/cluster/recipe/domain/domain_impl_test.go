@@ -19,17 +19,17 @@ import (
 
 type testDomainInfo struct {
 	db     *sql.DB
-	domain Domain
+	domain Service
 	ctx    context.Context
 	config Config
 }
 
 // Helper to setup domain test with a specific config
-func setupDomainTestWithConfig(t *testing.T, db *sql.DB, config Config) (Domain, context.Context) {
+func setupDomainTestWithConfig(t *testing.T, db *sql.DB, config Config) (Service, context.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	var domain Domain
+	var domain Service
 	app := fx.New(
 		fx.Provide(func() gox.CrossFunction {
 			return gox.NewCrossFunction()
@@ -41,7 +41,7 @@ func setupDomainTestWithConfig(t *testing.T, db *sql.DB, config Config) (Domain,
 			return config
 		}),
 		fx.Provide(NewDomainDataLayer),
-		fx.Provide(NewDomain),
+		fx.Provide(NewService),
 		fx.Populate(&domain),
 	)
 	err := app.Start(ctx)

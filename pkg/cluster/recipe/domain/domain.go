@@ -2,6 +2,6 @@ package domain
 
 import "context"
 
-type Domain interface {
+type Service interface {
 	Init(ctx context.Context) error
 }
