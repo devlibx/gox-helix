@@ -24,6 +24,12 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.deregisterWorkerStmt, err = db.PrepareContext(ctx, deregisterWorker); err != nil {
+		return nil, fmt.Errorf("error preparing query DeregisterWorker: %w", err)
+	}
+	if q.getWorkerStmt, err = db.PrepareContext(ctx, getWorker); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorker: %w", err)
+	}
 	if q.getWorkerStatusStmt, err = db.PrepareContext(ctx, getWorkerStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWorkerStatus: %w", err)
 	}
@@ -38,6 +44,16 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.deregisterWorkerStmt != nil {
+		if cerr := q.deregisterWorkerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deregisterWorkerStmt: %w", cerr)
+		}
+	}
+	if q.getWorkerStmt != nil {
+		if cerr := q.getWorkerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkerStmt: %w", cerr)
+		}
+	}
 	if q.getWorkerStatusStmt != nil {
 		if cerr := q.getWorkerStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getWorkerStatusStmt: %w", cerr)
@@ -90,19 +106,23 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                  DBTX
-	tx                  *sql.Tx
-	getWorkerStatusStmt *sql.Stmt
-	registerWorkerStmt  *sql.Stmt
-	sendHeartbeatStmt   *sql.Stmt
+	db                   DBTX
+	tx                   *sql.Tx
+	deregisterWorkerStmt *sql.Stmt
+	getWorkerStmt        *sql.Stmt
+	getWorkerStatusStmt  *sql.Stmt
+	registerWorkerStmt   *sql.Stmt
+	sendHeartbeatStmt    *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                  tx,
-		tx:                  tx,
-		getWorkerStatusStmt: q.getWorkerStatusStmt,
-		registerWorkerStmt:  q.registerWorkerStmt,
-		sendHeartbeatStmt:   q.sendHeartbeatStmt,
+		db:                   tx,
+		tx:                   tx,
+		deregisterWorkerStmt: q.deregisterWorkerStmt,
+		getWorkerStmt:        q.getWorkerStmt,
+		getWorkerStatusStmt:  q.getWorkerStatusStmt,
+		registerWorkerStmt:   q.registerWorkerStmt,
+		sendHeartbeatStmt:    q.sendHeartbeatStmt,
 	}
 }

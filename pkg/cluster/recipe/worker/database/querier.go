@@ -9,10 +9,26 @@ import (
 )
 
 type Querier interface {
+	//DeregisterWorker
+	//
+	//  UPDATE helix_workers
+	//  SET status = 'inactive'
+	//  WHERE domain = ?
+	//    AND worker_id = ?
+	DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error
+	//GetWorker
+	//
+	//  SELECT worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+	//  FROM helix_workers
+	//  WHERE worker_id = ?
+	//    AND domain = ?
+	GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorkerRow, error)
 	//GetWorkerStatus
 	//
-	//  SELECT status FROM helix_workers
-	//  WHERE domain = ? AND worker_id = ?
+	//  SELECT status
+	//  FROM helix_workers
+	//  WHERE domain = ?
+	//    AND worker_id = ?
 	GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams) (string, error)
 	//RegisterWorker
 	//
@@ -23,7 +39,9 @@ type Querier interface {
 	//
 	//  UPDATE helix_workers
 	//  SET last_heartbeat_at = ?
-	//  WHERE domain = ? AND worker_id = ? AND status = 'active'
+	//  WHERE domain = ?
+	//    AND worker_id = ?
+	//    AND status = 'active'
 	SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) error
 }
 

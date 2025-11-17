@@ -5,6 +5,7 @@ CREATE TABLE helix_workers (
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP NOT NULL,
     last_heartbeat_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id, created_at),
     UNIQUE KEY uidx_domain_worker_id (domain, worker_id, created_at)
 )

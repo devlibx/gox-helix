@@ -16,4 +16,5 @@ type HelixWorker struct {
 	Status          string        `json:"status"`
 	CreatedAt       time.Time     `json:"created_at"`
 	LastHeartbeatAt time.Time     `json:"last_heartbeat_at"`
+	UpdatedAt       sql.NullTime  `json:"updated_at"`
 }

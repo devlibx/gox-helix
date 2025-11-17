@@ -7,12 +7,79 @@ package helixWorkerMysql
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
+const deregisterWorker = `-- name: DeregisterWorker :exec
+UPDATE helix_workers
+SET status = 'inactive'
+WHERE domain = ?
+  AND worker_id = ?
+`
+
+type DeregisterWorkerParams struct {
+	Domain   string `json:"domain"`
+	WorkerID string `json:"worker_id"`
+}
+
+// DeregisterWorker
+//
+//	UPDATE helix_workers
+//	SET status = 'inactive'
+//	WHERE domain = ?
+//	  AND worker_id = ?
+func (q *Queries) DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error {
+	_, err := q.exec(ctx, q.deregisterWorkerStmt, deregisterWorker, arg.Domain, arg.WorkerID)
+	return err
+}
+
+const getWorker = `-- name: GetWorker :one
+SELECT worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+FROM helix_workers
+WHERE worker_id = ?
+  AND domain = ?
+`
+
+type GetWorkerParams struct {
+	WorkerID string `json:"worker_id"`
+	Domain   string `json:"domain"`
+}
+
+type GetWorkerRow struct {
+	WorkerID        string       `json:"worker_id"`
+	Domain          string       `json:"domain"`
+	Status          string       `json:"status"`
+	CreatedAt       time.Time    `json:"created_at"`
+	LastHeartbeatAt time.Time    `json:"last_heartbeat_at"`
+	UpdatedAt       sql.NullTime `json:"updated_at"`
+}
+
+// GetWorker
+//
+//	SELECT worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+//	FROM helix_workers
+//	WHERE worker_id = ?
+//	  AND domain = ?
+func (q *Queries) GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorkerRow, error) {
+	row := q.queryRow(ctx, q.getWorkerStmt, getWorker, arg.WorkerID, arg.Domain)
+	var i GetWorkerRow
+	err := row.Scan(
+		&i.WorkerID,
+		&i.Domain,
+		&i.Status,
+		&i.CreatedAt,
+		&i.LastHeartbeatAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
 const getWorkerStatus = `-- name: GetWorkerStatus :one
-SELECT status FROM helix_workers
-WHERE domain = ? AND worker_id = ?
+SELECT status
+FROM helix_workers
+WHERE domain = ?
+  AND worker_id = ?
 `
 
 type GetWorkerStatusParams struct {
@@ -22,8 +89,10 @@ type GetWorkerStatusParams struct {
 
 // GetWorkerStatus
 //
-//	SELECT status FROM helix_workers
-//	WHERE domain = ? AND worker_id = ?
+//	SELECT status
+//	FROM helix_workers
+//	WHERE domain = ?
+//	  AND worker_id = ?
 func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams) (string, error) {
 	row := q.queryRow(ctx, q.getWorkerStatusStmt, getWorkerStatus, arg.Domain, arg.WorkerID)
 	var status string
@@ -60,7 +129,9 @@ func (q *Queries) RegisterWorker(ctx context.Context, arg RegisterWorkerParams) 
 const sendHeartbeat = `-- name: SendHeartbeat :exec
 UPDATE helix_workers
 SET last_heartbeat_at = ?
-WHERE domain = ? AND worker_id = ? AND status = 'active'
+WHERE domain = ?
+  AND worker_id = ?
+  AND status = 'active'
 `
 
 type SendHeartbeatParams struct {
@@ -73,7 +144,9 @@ type SendHeartbeatParams struct {
 //
 //	UPDATE helix_workers
 //	SET last_heartbeat_at = ?
-//	WHERE domain = ? AND worker_id = ? AND status = 'active'
+//	WHERE domain = ?
+//	  AND worker_id = ?
+//	  AND status = 'active'
 func (q *Queries) SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) error {
 	_, err := q.exec(ctx, q.sendHeartbeatStmt, sendHeartbeat, arg.LastHeartbeatAt, arg.Domain, arg.WorkerID)
 	return err
