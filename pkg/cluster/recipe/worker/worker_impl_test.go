@@ -222,4 +222,25 @@ func TestWorker_Stop(t *testing.T) {
 	// 3. Create a new worker and Start() it in a goroutine.
 	// 4. Call Stop().
 	// 5. Verify that the Start() method returns and the goroutine exits cleanly.
+
+	td := setupWorkerTest(t)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- td.worker.Start(td.ctx)
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	td.worker.Stop()
+
+	// Make sure it is stopped
+	running := true
+	for i := 0; i < 5; i++ {
+		if td.worker.(*mysqlWorker).isRunning == false {
+			running = false
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	assert.False(t, running)
+
 }
