@@ -31,4 +31,6 @@ type Worker interface {
 
 	// ID returns the unique identifier (UUID) of the worker instance.
 	ID() string
+
+	IsRunning() bool
 }

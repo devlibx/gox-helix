@@ -126,7 +126,7 @@ func (q *Queries) RegisterWorker(ctx context.Context, arg RegisterWorkerParams) 
 	return err
 }
 
-const sendHeartbeat = `-- name: SendHeartbeat :exec
+const sendHeartbeat = `-- name: SendHeartbeat :execresult
 UPDATE helix_workers
 SET last_heartbeat_at = ?
 WHERE domain = ?
@@ -147,7 +147,6 @@ type SendHeartbeatParams struct {
 //	WHERE domain = ?
 //	  AND worker_id = ?
 //	  AND status = 'active'
-func (q *Queries) SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) error {
-	_, err := q.exec(ctx, q.sendHeartbeatStmt, sendHeartbeat, arg.LastHeartbeatAt, arg.Domain, arg.WorkerID)
-	return err
+func (q *Queries) SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) (sql.Result, error) {
+	return q.exec(ctx, q.sendHeartbeatStmt, sendHeartbeat, arg.LastHeartbeatAt, arg.Domain, arg.WorkerID)
 }

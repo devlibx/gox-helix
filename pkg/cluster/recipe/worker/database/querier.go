@@ -6,6 +6,7 @@ package helixWorkerMysql
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
@@ -42,7 +43,7 @@ type Querier interface {
 	//  WHERE domain = ?
 	//    AND worker_id = ?
 	//    AND status = 'active'
-	SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) error
+	SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) (sql.Result, error)
 }
 
 var _ Querier = (*Queries)(nil)

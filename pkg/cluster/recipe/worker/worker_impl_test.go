@@ -180,14 +180,37 @@ func TestWorker_StartAndHeartbeat(t *testing.T) {
 // TestWorker_SelfTerminateOnInactiveStatus verifies that a worker will stop
 // itself if its status is updated to 'inactive' in the database.
 func TestWorker_SelfTerminateOnInactiveStatus(t *testing.T) {
-	// TODO:
-	// 1. Setup test database and get a querier.
-	// 2. Create a mock TimeService.
-	// 3. Create a new worker and Start() it in a goroutine.
-	// 4. Directly update the worker's status to 'inactive' in the database.
-	// 5. Advance the mock time to trigger the next heartbeat check.
-	// 6. Verify that the Start() method returns (e.g., by checking a channel).
-	// 7. The worker should have called Stop() on its own.
+	td := setupWorkerTest(t)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- td.worker.Start(td.ctx)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	cfNow := td.timeService.Now()
+	_ = cfNow
+
+	now := time.Now().Add(1 * time.Hour)
+	td.timeService.SetNow(now)
+	time.Sleep(2 * time.Second)
+
+	workerRecord, err := td.querier.GetWorker(td.ctx, workerdb.GetWorkerParams{WorkerID: td.worker.ID(), Domain: td.config.Domain})
+	assert.NoError(t, err)
+	assert.NotNil(t, workerRecord)
+	assert.Equal(t, td.worker.ID(), workerRecord.WorkerID)
+	assert.False(t, workerRecord.LastHeartbeatAt.Equal(now))
+
+	// Stop - this should be set as false
+	td.worker.Stop()
+
+	running := true
+	for i := 0; i < 5; i++ {
+		if td.worker.(*mysqlWorker).isRunning == false {
+			running = false
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	assert.False(t, running)
 }
 
 // TestWorker_Stop ensures that calling the Stop() method gracefully terminates
