@@ -19,11 +19,12 @@ import (
 )
 
 type testWorkerInfo struct {
-	db      *sql.DB
-	worker  Worker
-	ctx     context.Context
-	config  Config
-	querier *workerdb.Queries
+	db          *sql.DB
+	worker      Worker
+	ctx         context.Context
+	config      Config
+	querier     *workerdb.Queries
+	timeService *MockTimeService
 }
 
 // MockTimeService is a mock implementation of TimeService for testing.
@@ -97,11 +98,12 @@ func setupWorkerTest(t *testing.T) *testWorkerInfo {
 	})
 
 	return &testWorkerInfo{
-		db:      db,
-		worker:  worker,
-		ctx:     ctx,
-		config:  testConfig,
-		querier: querier,
+		db:          db,
+		worker:      worker,
+		ctx:         ctx,
+		config:      testConfig,
+		querier:     querier,
+		timeService: mockTimeService,
 	}
 }
 
@@ -154,15 +156,25 @@ func TestWorker_Register(t *testing.T) {
 // TestWorker_StartAndHeartbeat checks that the worker's heartbeat timestamp
 // is updated after it starts.
 func TestWorker_StartAndHeartbeat(t *testing.T) {
-	// TODO:
-	// 1. Setup test database and get a querier.
-	// 2. Create a mock TimeService.
-	// 3. Create a new worker with a short heartbeat interval (e.g., 10ms).
-	// 4. Call Start() in a goroutine.
-	// 5. Get the initial heartbeat time from the DB.
-	// 6. Advance the mock time by a few intervals.
-	// 7. Get the new heartbeat time from the DB and verify it has been updated.
-	// 8. Call Stop().
+
+	td := setupWorkerTest(t)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- td.worker.Start(td.ctx)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	cfNow := td.timeService.Now()
+	_ = cfNow
+
+	now := time.Now().Add(1 * time.Hour)
+	td.timeService.SetNow(now)
+	time.Sleep(2 * time.Second)
+
+	workerRecord, err := td.querier.GetWorker(td.ctx, workerdb.GetWorkerParams{WorkerID: td.worker.ID(), Domain: td.config.Domain})
+	assert.NoError(t, err)
+	assert.NotNil(t, workerRecord)
+	assert.Equal(t, td.worker.ID(), workerRecord.WorkerID)
+	assert.False(t, workerRecord.LastHeartbeatAt.Equal(now))
 }
 
 // TestWorker_SelfTerminateOnInactiveStatus verifies that a worker will stop

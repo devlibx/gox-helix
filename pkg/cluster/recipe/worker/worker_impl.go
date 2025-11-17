@@ -7,6 +7,8 @@ import (
 	"github.com/devlibx/gox-base/v2/errors"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/google/uuid"
+	"log/slog"
+	"time"
 )
 
 // mysqlWorker is the MySQL-based implementation of the worker.Worker interface.
@@ -41,6 +43,36 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("failed to register worker %s", m.id))
 	}
+
+	// Run heart beat
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				err := m.dataLayer.SendHeartbeat(context.Background(), helixWorkerMysql.SendHeartbeatParams{
+					LastHeartbeatAt: m.Now(),
+					Domain:          m.config.Domain,
+					WorkerID:        m.id,
+				})
+				if err != nil {
+
+					w, err := m.dataLayer.GetWorker(context.Background(), helixWorkerMysql.GetWorkerParams{
+						Domain:   m.config.Domain,
+						WorkerID: m.id,
+					})
+					if err != nil && w.Status != "active" {
+						slog.Warn("(worker is inactive) failed to send heartbeat", "domain", m.config.Domain, "worker_id", m.id, "error", err.Error())
+						goto exit
+					}
+					slog.Warn("failed to send heartbeat", "domain", m.config.Domain, "worker_id", m.id, "error", err.Error())
+				}
+			}
+		}
+
+	exit:
+		slog.Warn("worker heartbeat stopped", "domain", m.config.Domain, "worker_id", m.id, "error", err.Error())
+	}()
 	return nil
 }
 
