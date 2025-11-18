@@ -27,3 +27,9 @@ SELECT worker_id, domain, status, created_at, last_heartbeat_at, updated_at
 FROM helix_workers
 WHERE worker_id = ?
   AND domain = ?;
+
+-- name: GetAllActiveWorkersByDomain :many
+SELECT worker_id
+FROM helix_workers
+WHERE domain = ?
+  and status = 1;

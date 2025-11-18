@@ -17,6 +17,13 @@ type Querier interface {
 	//  WHERE domain = ?
 	//    AND worker_id = ?
 	DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error
+	//GetAllActiveWorkersByDomain
+	//
+	//  SELECT worker_id
+	//  FROM helix_workers
+	//  WHERE domain = ?
+	//    and status = 1
+	GetAllActiveWorkersByDomain(ctx context.Context, domain string) ([]string, error)
 	//GetWorker
 	//
 	//  SELECT worker_id, domain, status, created_at, last_heartbeat_at, updated_at

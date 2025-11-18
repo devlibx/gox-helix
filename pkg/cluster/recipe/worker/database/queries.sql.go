@@ -34,6 +34,42 @@ func (q *Queries) DeregisterWorker(ctx context.Context, arg DeregisterWorkerPara
 	return err
 }
 
+const getAllActiveWorkersByDomain = `-- name: GetAllActiveWorkersByDomain :many
+SELECT worker_id
+FROM helix_workers
+WHERE domain = ?
+  and status = 1
+`
+
+// GetAllActiveWorkersByDomain
+//
+//	SELECT worker_id
+//	FROM helix_workers
+//	WHERE domain = ?
+//	  and status = 1
+func (q *Queries) GetAllActiveWorkersByDomain(ctx context.Context, domain string) ([]string, error) {
+	rows, err := q.query(ctx, q.getAllActiveWorkersByDomainStmt, getAllActiveWorkersByDomain, domain)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var worker_id string
+		if err := rows.Scan(&worker_id); err != nil {
+			return nil, err
+		}
+		items = append(items, worker_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getWorker = `-- name: GetWorker :one
 SELECT worker_id, domain, status, created_at, last_heartbeat_at, updated_at
 FROM helix_workers
