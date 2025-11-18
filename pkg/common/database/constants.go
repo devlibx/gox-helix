@@ -11,7 +11,6 @@ const (
 type PartitionStatus int8
 
 const (
-	PartitionStatusInactive   PartitionStatus = 0 // inactive
-	PartitionStatusActive     PartitionStatus = 1 // active
-	PartitionStatusUnassigned PartitionStatus = 2 // unassigned
+	PartitionStatusInactive PartitionStatus = 0 // inactive
+	PartitionStatusActive   PartitionStatus = 1 // active
 )

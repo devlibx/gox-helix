@@ -273,7 +273,7 @@ type UpsertPartitionParams struct {
 	Tasklist string         `json:"tasklist"`
 	OwnerID  string         `json:"owner_id"`
 	Metadata sql.NullString `json:"metadata"`
-	Status   string         `json:"status"`
+	Status   int8           `json:"status"`
 }
 
 // UpsertPartition

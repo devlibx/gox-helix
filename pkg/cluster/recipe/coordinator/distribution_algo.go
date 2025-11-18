@@ -17,15 +17,9 @@ type DistributionRequest struct {
 type DistributionResponse struct {
 	DomainName string
 	TaskList   string
-	Mapping    map[string]DistributionMapping
+	Mapping    map[int]DistributionMapping
 }
 
 type DistributionMapping struct {
-	Partition int
-	Status    databaseCommon.PartitionStatus
-}
-
-//go:generate mockgen -source=distribution_algo.go -destination=distribution_algo_mock.go -package=coordinator
-type WorkerService interface {
-	GetActiveWorkers(ctx context.Context, domain string) ([]string, error)
+	Status databaseCommon.PartitionStatus `yaml:"status"`
 }

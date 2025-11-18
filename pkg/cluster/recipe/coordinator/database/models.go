@@ -14,7 +14,7 @@ type HelixWorkerPartitionMapping struct {
 	Domain    string         `json:"domain"`
 	Tasklist  string         `json:"tasklist"`
 	OwnerID   string         `json:"owner_id"`
-	Status    string         `json:"status"`
+	Status    int8           `json:"status"`
 	Metadata  sql.NullString `json:"metadata"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
