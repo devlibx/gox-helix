@@ -33,20 +33,11 @@ func (d distributorStrategyV1Impl) Distribute(ctx context.Context, request Distr
 	}
 	partitionCount := int(taskListToHandle.PartitionCount)
 
-	// Step 1 = Build what is the current mapping of existing partition
+	// Step 1 - Build what is the current mapping of existing partition
 	existingPartitionDistribution := d.buildExisting(activePartitionMapping, partitionCount)
 
-	resultMapping := map[string]*algorithmV1Bucket{}
-	tempAlgorithmV1Bucket := make([]*algorithmV1Bucket, 0)
-	for _, ownerId := range activeWorkersToAssignPartitions {
-		resultMapping[ownerId] = &algorithmV1Bucket{MaxPartitionsAllowed: 0}
-		tempAlgorithmV1Bucket = append(tempAlgorithmV1Bucket, resultMapping[ownerId])
-	}
-
-	for i := 0; i < partitionCount; i++ {
-		idx := i % len(tempAlgorithmV1Bucket)
-		tempAlgorithmV1Bucket[idx].MaxPartitionsAllowed = tempAlgorithmV1Bucket[idx].MaxPartitionsAllowed + 1
-	}
+	// Step 2 - make buckets (empty for now) with max no of partitions in each bucket
+	resultMapping := d.buildBucket(activeWorkersToAssignPartitions, partitionCount)
 
 	// Step 2 - assign partitions to existing owners (sticky)
 	for partitionId, n := range existingPartitionDistribution {
