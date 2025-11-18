@@ -144,6 +144,380 @@ func TestBuildExisting(t *testing.T) {
 	assert.Equal(t, 9, len(result))
 }
 
+func TestAssignPartitions(t *testing.T) {
+	d := distributorStrategyV1Impl{}
+
+	// Test 1: All partitions sticky assignment
+	// All 10 partitions are already assigned to existing workers, should stick to original owners
+	t.Run("all partitions sticky assignment", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 4},
+			5: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 5},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify worker-1 has 3 partitions
+		assert.Equal(t, 3, len(buckets["worker-1"].Partitions))
+		assert.True(t, len(buckets["worker-1"].Partitions) <= buckets["worker-1"].MaxPartitionsAllowed)
+
+		// Verify worker-2 has 3 partitions
+		assert.Equal(t, 3, len(buckets["worker-2"].Partitions))
+		assert.True(t, len(buckets["worker-2"].Partitions) <= buckets["worker-2"].MaxPartitionsAllowed)
+
+		// Verify sticky assignment - partitions stayed with original owners
+		for _, p := range buckets["worker-1"].Partitions {
+			assert.Equal(t, "worker-1", p.OwnerId)
+			assert.Contains(t, []int{0, 1, 2}, p.Partition)
+		}
+		for _, p := range buckets["worker-2"].Partitions {
+			assert.Equal(t, "worker-2", p.OwnerId)
+			assert.Contains(t, []int{3, 4, 5}, p.Partition)
+		}
+	})
+
+	// Test 2: Mix of assigned and unassigned
+	t.Run("mix of assigned and unassigned", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 4, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 4, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-3": {OwnerId: "worker-3", MaxPartitionsAllowed: 4, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 4},
+			5: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 5},
+			6: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 6},
+			7: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 7},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify total assignments
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions) + len(buckets["worker-3"].Partitions)
+		assert.Equal(t, 8, total, "all 8 partitions should be assigned")
+
+		// Verify capacity limits
+		assert.True(t, len(buckets["worker-1"].Partitions) <= buckets["worker-1"].MaxPartitionsAllowed)
+		assert.True(t, len(buckets["worker-2"].Partitions) <= buckets["worker-2"].MaxPartitionsAllowed)
+		assert.True(t, len(buckets["worker-3"].Partitions) <= buckets["worker-3"].MaxPartitionsAllowed)
+
+		// Verify sticky assignments
+		assert.GreaterOrEqual(t, len(buckets["worker-1"].Partitions), 2, "worker-1 should have at least its 2 original partitions")
+		assert.GreaterOrEqual(t, len(buckets["worker-2"].Partitions), 2, "worker-2 should have at least its 2 original partitions")
+	})
+
+	// Test 3: Original owner no longer active
+	t.Run("original owner no longer active", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"new-worker-1": {OwnerId: "new-worker-1", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"new-worker-2": {OwnerId: "new-worker-2", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0: {OwnerId: "old-worker", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1: {OwnerId: "old-worker", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2: {OwnerId: "old-worker", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3: {OwnerId: "old-worker", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4: {OwnerId: "old-worker", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 4},
+			5: {OwnerId: "old-worker", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 5},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all partitions redistributed to new workers
+		total := len(buckets["new-worker-1"].Partitions) + len(buckets["new-worker-2"].Partitions)
+		assert.Equal(t, 6, total, "all 6 partitions should be redistributed")
+
+		// Verify capacity limits
+		assert.True(t, len(buckets["new-worker-1"].Partitions) <= buckets["new-worker-1"].MaxPartitionsAllowed)
+		assert.True(t, len(buckets["new-worker-2"].Partitions) <= buckets["new-worker-2"].MaxPartitionsAllowed)
+	})
+
+	// Test 4: More partitions than total capacity (overflow)
+	t.Run("more partitions than capacity - overflow", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-3": {OwnerId: "worker-3", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := make(map[int]algorithmV1OwnerPartitionMapping)
+		for i := 0; i < 20; i++ {
+			existingMapping[i] = algorithmV1OwnerPartitionMapping{
+				OwnerId:   "",
+				Status:    databaseCommon.PartitionAssignmentStatusUnassigned,
+				Partition: i,
+			}
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify only 15 partitions assigned (3 workers * 5 capacity)
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions) + len(buckets["worker-3"].Partitions)
+		assert.Equal(t, 15, total, "only 15 partitions should be assigned (capacity limit)")
+
+		// Verify capacity limits strictly enforced
+		assert.Equal(t, 5, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, 5, len(buckets["worker-2"].Partitions))
+		assert.Equal(t, 5, len(buckets["worker-3"].Partitions))
+	})
+
+	// Test 5: Fewer partitions than capacity (underflow)
+	t.Run("fewer partitions than capacity - underflow", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 10, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 10, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-3": {OwnerId: "worker-3", MaxPartitionsAllowed: 10, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 0},
+			1: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 1},
+			2: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 2},
+			3: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 3},
+			4: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 4},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all 5 partitions assigned
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions) + len(buckets["worker-3"].Partitions)
+		assert.Equal(t, 5, total, "all 5 partitions should be assigned")
+
+		// Verify capacity not exceeded
+		assert.True(t, len(buckets["worker-1"].Partitions) <= buckets["worker-1"].MaxPartitionsAllowed)
+		assert.True(t, len(buckets["worker-2"].Partitions) <= buckets["worker-2"].MaxPartitionsAllowed)
+		assert.True(t, len(buckets["worker-3"].Partitions) <= buckets["worker-3"].MaxPartitionsAllowed)
+	})
+
+	// Test 6: Partition count increased (scale-up)
+	t.Run("partition count increased - scale up", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			// Original 5 partitions (assigned)
+			0: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 4},
+			// New 5 partitions (unassigned)
+			5: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 5},
+			6: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 6},
+			7: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 7},
+			8: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 8},
+			9: {OwnerId: "", Status: databaseCommon.PartitionAssignmentStatusUnassigned, Partition: 9},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all 10 partitions assigned
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions)
+		assert.Equal(t, 10, total, "all 10 partitions should be assigned")
+
+		// Verify capacity limits
+		assert.Equal(t, 5, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, 5, len(buckets["worker-2"].Partitions))
+
+		// Verify sticky assignments for original partitions
+		worker1HasOriginal := false
+		for _, p := range buckets["worker-1"].Partitions {
+			if p.Partition == 0 || p.Partition == 1 || p.Partition == 4 {
+				worker1HasOriginal = true
+			}
+		}
+		assert.True(t, worker1HasOriginal, "worker-1 should retain at least some original partitions")
+	})
+
+	// Test 7: Worker count decreased (scale-down)
+	t.Run("worker count decreased - scale down", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 5, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4: {OwnerId: "worker-3", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 4}, // worker-3 removed
+			5: {OwnerId: "worker-3", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 5}, // worker-3 removed
+			6: {OwnerId: "worker-4", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 6}, // worker-4 removed
+			7: {OwnerId: "worker-5", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 7}, // worker-5 removed
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all 8 partitions redistributed to remaining 2 workers
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions)
+		assert.Equal(t, 8, total, "all 8 partitions should be redistributed")
+
+		// Verify capacity limits
+		assert.True(t, len(buckets["worker-1"].Partitions) <= buckets["worker-1"].MaxPartitionsAllowed)
+		assert.True(t, len(buckets["worker-2"].Partitions) <= buckets["worker-2"].MaxPartitionsAllowed)
+	})
+
+	// Test 8: Perfect equal distribution
+	t.Run("perfect equal distribution", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 6, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 6, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0:  {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1:  {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2:  {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3:  {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4:  {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 4},
+			5:  {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 5},
+			6:  {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 6},
+			7:  {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 7},
+			8:  {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 8},
+			9:  {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 9},
+			10: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 10},
+			11: {OwnerId: "worker-2", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 11},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify perfect distribution
+		assert.Equal(t, 6, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, 6, len(buckets["worker-2"].Partitions))
+
+		// Verify both at capacity
+		assert.Equal(t, buckets["worker-1"].MaxPartitionsAllowed, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, buckets["worker-2"].MaxPartitionsAllowed, len(buckets["worker-2"].Partitions))
+	})
+
+	// Test 9: All partitions unassigned (fresh start)
+	t.Run("all partitions unassigned - fresh start", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 4, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 3, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-3": {OwnerId: "worker-3", MaxPartitionsAllowed: 3, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := make(map[int]algorithmV1OwnerPartitionMapping)
+		for i := 0; i < 10; i++ {
+			existingMapping[i] = algorithmV1OwnerPartitionMapping{
+				OwnerId:   "",
+				Status:    databaseCommon.PartitionAssignmentStatusUnassigned,
+				Partition: i,
+			}
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all 10 partitions assigned
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions) + len(buckets["worker-3"].Partitions)
+		assert.Equal(t, 10, total, "all 10 partitions should be assigned")
+
+		// Verify capacity limits
+		assert.Equal(t, 4, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, 3, len(buckets["worker-2"].Partitions))
+		assert.Equal(t, 3, len(buckets["worker-3"].Partitions))
+	})
+
+	// Test 10: Single bucket gets all
+	t.Run("single bucket gets all", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 15, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := make(map[int]algorithmV1OwnerPartitionMapping)
+		for i := 0; i < 15; i++ {
+			status := databaseCommon.PartitionAssignmentStatusUnassigned
+			owner := ""
+			if i < 8 {
+				status = databaseCommon.PartitionAssignmentStatusAssigned
+				owner = "worker-1"
+			}
+			existingMapping[i] = algorithmV1OwnerPartitionMapping{
+				OwnerId:   owner,
+				Status:    status,
+				Partition: i,
+			}
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all 15 partitions go to single worker
+		assert.Equal(t, 15, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, buckets["worker-1"].MaxPartitionsAllowed, len(buckets["worker-1"].Partitions))
+	})
+
+	// Test 11: Zero partitions edge case
+	t.Run("zero partitions edge case", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 10, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 10, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-3": {OwnerId: "worker-3", MaxPartitionsAllowed: 10, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify all buckets remain empty
+		assert.Equal(t, 0, len(buckets["worker-1"].Partitions))
+		assert.Equal(t, 0, len(buckets["worker-2"].Partitions))
+		assert.Equal(t, 0, len(buckets["worker-3"].Partitions))
+	})
+
+	// Test 12: Sticky assignment exceeds new capacity
+	t.Run("sticky assignment exceeds new capacity", func(t *testing.T) {
+		buckets := map[string]*algorithmV1Bucket{
+			"worker-1": {OwnerId: "worker-1", MaxPartitionsAllowed: 3, Partitions: []algorithmV1OwnerPartitionMapping{}}, // reduced from 10
+			"worker-2": {OwnerId: "worker-2", MaxPartitionsAllowed: 4, Partitions: []algorithmV1OwnerPartitionMapping{}},
+			"worker-3": {OwnerId: "worker-3", MaxPartitionsAllowed: 3, Partitions: []algorithmV1OwnerPartitionMapping{}},
+		}
+
+		existingMapping := map[int]algorithmV1OwnerPartitionMapping{
+			0: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 0},
+			1: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 1},
+			2: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 2},
+			3: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 3},
+			4: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 4},
+			5: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 5},
+			6: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 6},
+			7: {OwnerId: "worker-1", Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: 7},
+		}
+
+		d.assignPartitions(buckets, existingMapping)
+
+		// Verify worker-1 only gets 3 (capacity limit), rest redistributed
+		assert.Equal(t, 3, len(buckets["worker-1"].Partitions), "worker-1 capacity limited to 3")
+		assert.True(t, len(buckets["worker-1"].Partitions) <= buckets["worker-1"].MaxPartitionsAllowed)
+
+		// Verify total partitions assigned equals input
+		total := len(buckets["worker-1"].Partitions) + len(buckets["worker-2"].Partitions) + len(buckets["worker-3"].Partitions)
+		assert.Equal(t, 8, total, "all 8 partitions should be assigned")
+
+		// Verify other workers picked up overflow
+		assert.True(t, len(buckets["worker-2"].Partitions) > 0, "worker-2 should have partitions")
+		assert.True(t, len(buckets["worker-3"].Partitions) > 0, "worker-3 should have partitions")
+	})
+}
+
 func TestCapacityAllocation(t *testing.T) {
 	d := distributorStrategyV1Impl{}
 

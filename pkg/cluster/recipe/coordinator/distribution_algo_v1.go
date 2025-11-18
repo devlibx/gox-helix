@@ -39,19 +39,25 @@ func (d distributorStrategyV1Impl) Distribute(ctx context.Context, request Distr
 	// Step 2 - make buckets (empty for now) with max no of partitions in each bucket
 	resultMapping := d.buildBucket(activeWorkersToAssignPartitions, partitionCount)
 
-	// Step 2 - assign partitions to existing owners (sticky)
-	for partitionId, n := range existingPartitionDistribution {
-		if _, ok := resultMapping[n.OwnerId]; !ok {
-			resultMapping[n.OwnerId] = &algorithmV1Bucket{MaxPartitionsAllowed: 10}
-		}
-		assigned := resultMapping[n.OwnerId].TryAssign(n)
-		if assigned {
-			delete(existingPartitionDistribution, partitionId)
+	// Step 3 - distribute partitions
+	d.assignPartitions(resultMapping, existingPartitionDistribution)
+
+	resp := &DistributionResponse{
+		DomainName: request.DomainName,
+		TaskList:   request.TaskList,
+		Mapping:    make(map[int]DistributionMapping),
+	}
+
+	for _, v := range resultMapping {
+		for _, p := range v.Partitions {
+			resp.Mapping[p.Partition] = DistributionMapping{
+				OwnerId: p.OwnerId,
+				Status:  p.Status,
+			}
 		}
 	}
 
-	_, _, _, _ = activePartitionMapping, activeWorkersToAssignPartitions, taskListToHandle, partitionCount
-	return nil, nil
+	return resp, nil
 }
 
 // buildExisting builds what is the current mapping of existing partitions
@@ -96,6 +102,39 @@ func (d distributorStrategyV1Impl) buildBucket(workersOwnerIds []string, partiti
 	return resultMapping
 }
 
+func (d distributorStrategyV1Impl) assignPartitions(out map[string]*algorithmV1Bucket, existingMapping map[int]algorithmV1OwnerPartitionMapping) {
+
+	// Sticky assignment - try to give partition to original owner
+	for _, v := range existingMapping {
+		if v.Status == databaseCommon.PartitionAssignmentStatusAssigned {
+			// Check if the owner still exists in the bucket map
+			if bucket, ok := out[v.OwnerId]; ok {
+				assigned := bucket.TryAssign(v)
+				if !assigned {
+					// If sticky assignment failed (capacity full), mark for redistribution
+					v.Status = databaseCommon.PartitionAssignmentStatusUnassigned
+					existingMapping[v.Partition] = v
+				}
+			} else {
+				// Owner no longer exists, mark for redistribution
+				v.Status = databaseCommon.PartitionAssignmentStatusUnassigned
+				existingMapping[v.Partition] = v
+			}
+		}
+	}
+
+	// Distribute any unsigned to
+	for _, v := range existingMapping {
+		if v.Status == databaseCommon.PartitionAssignmentStatusUnassigned {
+			for _, outV := range out {
+				if outV.TryAssign(v) {
+					break
+				}
+			}
+		}
+	}
+}
+
 type algorithmV1OwnerPartitionMapping struct {
 	Status    databaseCommon.PartitionAssignmentStatus
 	OwnerId   string
@@ -109,11 +148,6 @@ type algorithmV1Bucket struct {
 }
 
 func (a *algorithmV1Bucket) TryAssign(m algorithmV1OwnerPartitionMapping) bool {
-
-	// Ignore if it is not in assigned state
-	if m.Status != databaseCommon.PartitionAssignmentStatusAssigned {
-		return false
-	}
 
 	if a.Partitions == nil || len(a.Partitions) == 0 {
 		a.Partitions = make([]algorithmV1OwnerPartitionMapping, 0)
