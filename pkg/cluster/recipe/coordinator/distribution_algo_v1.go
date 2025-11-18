@@ -63,8 +63,10 @@ func (d distributorStrategyV1Impl) Distribute(ctx context.Context, request Distr
 	return nil, nil
 }
 
-// Step 1 = Build what is the current mapping of existing partitions
+// buildExisting builds what is the current mapping of existing partitions
 // Key=partition no, status=existing status, and owner=what is current owner
+// If we have added new partitions or of we have missing partition, it will add unsigned records so
+// that we can add them and use them in algo
 func (d distributorStrategyV1Impl) buildExisting(activePartitionMapping []WorkerPartitionMapping, partitionCount int) map[int]algorithmV1OwnerPartitionMapping {
 
 	existingPartitionDistribution := map[int]algorithmV1OwnerPartitionMapping{}
@@ -82,6 +84,25 @@ func (d distributorStrategyV1Impl) buildExisting(activePartitionMapping []Worker
 	}
 
 	return existingPartitionDistribution
+}
+
+func (d distributorStrategyV1Impl) buildBucket(workersOwnerIds []string, partitionCount int) map[string]*algorithmV1Bucket {
+	resultMapping := map[string]*algorithmV1Bucket{}
+	tempAlgorithmV1Bucket := make([]*algorithmV1Bucket, 0)
+
+	// Make empty with MaxPartitionsAllowed = 0
+	for _, ownerId := range workersOwnerIds {
+		resultMapping[ownerId] = &algorithmV1Bucket{MaxPartitionsAllowed: 0}
+		tempAlgorithmV1Bucket = append(tempAlgorithmV1Bucket, resultMapping[ownerId])
+	}
+
+	// Assign them equally
+	for i := 0; i < partitionCount; i++ {
+		idx := i % len(tempAlgorithmV1Bucket)
+		tempAlgorithmV1Bucket[idx].MaxPartitionsAllowed = tempAlgorithmV1Bucket[idx].MaxPartitionsAllowed + 1
+	}
+
+	return resultMapping
 }
 
 type algorithmV1OwnerPartitionMapping struct {

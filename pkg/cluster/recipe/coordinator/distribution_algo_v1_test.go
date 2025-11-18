@@ -143,3 +143,122 @@ func TestBuildExisting(t *testing.T) {
 	result = d.buildExisting(activePartitionMapping, 9)
 	assert.Equal(t, 9, len(result))
 }
+
+func TestCapacityAllocation(t *testing.T) {
+	d := distributorStrategyV1Impl{}
+
+	// Test 1: Equal distribution - partitions match buckets (4 partitions, 4 buckets = 1 each)
+	t.Run("equal distribution - partitions match buckets", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1", "2", "3", "4"}, 4)
+		assert.Equal(t, 4, len(bucket))
+		assert.Equal(t, 1, bucket["1"].MaxPartitionsAllowed)
+		assert.Equal(t, 1, bucket["2"].MaxPartitionsAllowed)
+		assert.Equal(t, 1, bucket["3"].MaxPartitionsAllowed)
+		assert.Equal(t, 1, bucket["4"].MaxPartitionsAllowed)
+	})
+
+	// Test 2: More partitions than buckets with overflow
+	// 20 partitions, 6 buckets: base=3, remainder=2
+	// Expected: first 2 buckets get 4, remaining 4 buckets get 3 each
+	// 4+4+3+3+3+3 = 20
+	t.Run("more partitions than buckets with overflow", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1", "2", "3", "4", "5", "6"}, 20)
+		assert.Equal(t, 6, len(bucket))
+
+		// First 2 buckets should get 4 partitions (base + 1)
+		assert.Equal(t, 4, bucket["1"].MaxPartitionsAllowed, "bucket 1 should have 4 partitions")
+		assert.Equal(t, 4, bucket["2"].MaxPartitionsAllowed, "bucket 2 should have 4 partitions")
+
+		// Remaining 4 buckets should get 3 partitions (base)
+		assert.Equal(t, 3, bucket["3"].MaxPartitionsAllowed, "bucket 3 should have 3 partitions")
+		assert.Equal(t, 3, bucket["4"].MaxPartitionsAllowed, "bucket 4 should have 3 partitions")
+		assert.Equal(t, 3, bucket["5"].MaxPartitionsAllowed, "bucket 5 should have 3 partitions")
+		assert.Equal(t, 3, bucket["6"].MaxPartitionsAllowed, "bucket 6 should have 3 partitions")
+
+		// Verify total allocation
+		total := 0
+		for _, b := range bucket {
+			total += b.MaxPartitionsAllowed
+		}
+		assert.Equal(t, 20, total, "total partitions should equal 20")
+	})
+
+	// Test 3: Fewer partitions than buckets
+	// 3 partitions, 5 buckets: first 3 buckets get 1, last 2 get 0
+	t.Run("fewer partitions than buckets", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1", "2", "3", "4", "5"}, 3)
+		assert.Equal(t, 5, len(bucket))
+
+		// First 3 buckets get 1 partition each
+		assert.Equal(t, 1, bucket["1"].MaxPartitionsAllowed, "bucket 1 should have 1 partition")
+		assert.Equal(t, 1, bucket["2"].MaxPartitionsAllowed, "bucket 2 should have 1 partition")
+		assert.Equal(t, 1, bucket["3"].MaxPartitionsAllowed, "bucket 3 should have 1 partition")
+
+		// Remaining buckets get 0
+		assert.Equal(t, 0, bucket["4"].MaxPartitionsAllowed, "bucket 4 should have 0 partitions")
+		assert.Equal(t, 0, bucket["5"].MaxPartitionsAllowed, "bucket 5 should have 0 partitions")
+
+		// Verify total allocation
+		total := 0
+		for _, b := range bucket {
+			total += b.MaxPartitionsAllowed
+		}
+		assert.Equal(t, 3, total, "total partitions should equal 3")
+	})
+
+	// Test 4: Large partition count with small overflow
+	// 10 partitions, 3 buckets: base=3, remainder=1
+	// Expected: first bucket gets 4, remaining 2 get 3 each
+	// 4+3+3 = 10
+	t.Run("large partition count with small overflow", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1", "2", "3"}, 10)
+		assert.Equal(t, 3, len(bucket))
+
+		assert.Equal(t, 4, bucket["1"].MaxPartitionsAllowed, "bucket 1 should have 4 partitions")
+		assert.Equal(t, 3, bucket["2"].MaxPartitionsAllowed, "bucket 2 should have 3 partitions")
+		assert.Equal(t, 3, bucket["3"].MaxPartitionsAllowed, "bucket 3 should have 3 partitions")
+
+		// Verify total allocation
+		total := 0
+		for _, b := range bucket {
+			total += b.MaxPartitionsAllowed
+		}
+		assert.Equal(t, 10, total, "total partitions should equal 10")
+	})
+
+	// Test 5: Single bucket gets all partitions
+	t.Run("single bucket gets all partitions", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1"}, 15)
+		assert.Equal(t, 1, len(bucket))
+		assert.Equal(t, 15, bucket["1"].MaxPartitionsAllowed, "single bucket should have all 15 partitions")
+	})
+
+	// Test 6: Zero partitions
+	t.Run("zero partitions", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1", "2", "3"}, 0)
+		assert.Equal(t, 3, len(bucket))
+		assert.Equal(t, 0, bucket["1"].MaxPartitionsAllowed)
+		assert.Equal(t, 0, bucket["2"].MaxPartitionsAllowed)
+		assert.Equal(t, 0, bucket["3"].MaxPartitionsAllowed)
+	})
+
+	// Test 7: Exact multiple (no overflow)
+	// 12 partitions, 4 buckets: base=3, remainder=0
+	// Expected: all buckets get 3 each
+	t.Run("exact multiple - no overflow", func(t *testing.T) {
+		bucket := d.buildBucket([]string{"1", "2", "3", "4"}, 12)
+		assert.Equal(t, 4, len(bucket))
+
+		assert.Equal(t, 3, bucket["1"].MaxPartitionsAllowed)
+		assert.Equal(t, 3, bucket["2"].MaxPartitionsAllowed)
+		assert.Equal(t, 3, bucket["3"].MaxPartitionsAllowed)
+		assert.Equal(t, 3, bucket["4"].MaxPartitionsAllowed)
+
+		// Verify total allocation
+		total := 0
+		for _, b := range bucket {
+			total += b.MaxPartitionsAllowed
+		}
+		assert.Equal(t, 12, total, "total partitions should equal 12")
+	})
+}
