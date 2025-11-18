@@ -14,3 +14,11 @@ const (
 	PartitionStatusInactive PartitionStatus = 0 // inactive
 	PartitionStatusActive   PartitionStatus = 1 // active
 )
+
+type PartitionAssignmentStatus int8
+
+const (
+	PartitionAssignmentStatusAssigned         PartitionAssignmentStatus = 0
+	PartitionAssignmentStatusUnassigned       PartitionAssignmentStatus = 1
+	PartitionAssignmentStatusReleaseRequested PartitionAssignmentStatus = 2
+)

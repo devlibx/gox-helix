@@ -21,5 +21,5 @@ type DistributionResponse struct {
 }
 
 type DistributionMapping struct {
-	Status databaseCommon.PartitionStatus `yaml:"status"`
+	Status databaseCommon.PartitionAssignmentStatus `yaml:"status"`
 }
