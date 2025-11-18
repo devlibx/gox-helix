@@ -89,7 +89,7 @@ func (d distributorStrategyV1Impl) buildBucket(workersOwnerIds []string, partiti
 
 	// Make empty with MaxPartitionsAllowed = 0
 	for _, ownerId := range workersOwnerIds {
-		resultMapping[ownerId] = &algorithmV1Bucket{MaxPartitionsAllowed: 0}
+		resultMapping[ownerId] = &algorithmV1Bucket{OwnerId: ownerId, MaxPartitionsAllowed: 0}
 		tempAlgorithmV1Bucket = append(tempAlgorithmV1Bucket, resultMapping[ownerId])
 	}
 
@@ -158,7 +158,8 @@ func (a *algorithmV1Bucket) TryAssign(m algorithmV1OwnerPartitionMapping) bool {
 		return false
 	}
 
-	a.Partitions = append(a.Partitions, algorithmV1OwnerPartitionMapping{OwnerId: m.OwnerId, Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: m.Partition})
+	// Use bucket's OwnerId, not the partition's old OwnerId
+	a.Partitions = append(a.Partitions, algorithmV1OwnerPartitionMapping{OwnerId: a.OwnerId, Status: databaseCommon.PartitionAssignmentStatusAssigned, Partition: m.Partition})
 	return true
 }
 

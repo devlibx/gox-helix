@@ -10,44 +10,250 @@ import (
 	"testing"
 )
 
-func TestDistributorStrategyV1Impl(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockWorkerService := NewMockWorkerService(ctrl)
-	mockPartitionService := NewMockPartitionService(ctrl)
-	mockDomainService := NewMockDomainService(ctrl)
+func TestDistribute(t *testing.T) {
 
-	d := distributorStrategyV1Impl{
-		CrossFunction: gox.NewCrossFunction(),
-		ws:            mockWorkerService,
-		ps:            mockPartitionService,
-		ds:            mockDomainService,
-	}
+	// Test 1: Simple distribution with 2 workers and 10 partitions
+	t.Run("simple distribution with 2 workers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 
-	mockDomainService.EXPECT().GetTaskListInfo(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(
-			&helixDomainMysql.HelixDomain{PartitionCount: 10},
-			nil,
-		)
-	mockWorkerService.EXPECT().GetActiveWorkers(gomock.Any(), gomock.Any()).Return([]string{"node-1", "node-2"}, nil)
-	mockPartitionService.EXPECT().GetActivePartitionMappings(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(
-			[]WorkerPartitionMapping{
+		mockWorkerService := NewMockWorkerService(ctrl)
+		mockPartitionService := NewMockPartitionService(ctrl)
+		mockDomainService := NewMockDomainService(ctrl)
+
+		d := distributorStrategyV1Impl{
+			CrossFunction: gox.NewCrossFunction(),
+			ws:            mockWorkerService,
+			ps:            mockPartitionService,
+			ds:            mockDomainService,
+		}
+
+		// Setup mocks
+		mockDomainService.EXPECT().GetTaskListInfo(gomock.Any(), "test-domain", "test-tasklist").
+			Return(&helixDomainMysql.HelixDomain{PartitionCount: 10}, nil)
+
+		mockWorkerService.EXPECT().GetActiveWorkers(gomock.Any(), "test-domain").
+			Return([]string{"worker-1", "worker-2"}, nil)
+
+		mockPartitionService.EXPECT().GetActivePartitionMappings(gomock.Any(), "test-domain", "test-tasklist").
+			Return([]WorkerPartitionMapping{}, nil)
+
+		// Execute
+		response, err := d.Distribute(context.Background(), DistributionRequest{
+			DomainName: "test-domain",
+			TaskList:   "test-tasklist",
+		})
+
+		// Verify
+		assert.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, "test-domain", response.DomainName)
+		assert.Equal(t, "test-tasklist", response.TaskList)
+		assert.Equal(t, 10, len(response.Mapping), "should have 10 partitions assigned")
+
+		// Verify all partitions are assigned
+		for i := 0; i < 10; i++ {
+			mapping, exists := response.Mapping[i]
+			assert.True(t, exists, "partition %d should exist", i)
+			assert.NotEmpty(t, mapping.OwnerId, "partition %d should have an owner", i)
+			assert.Equal(t, databaseCommon.PartitionAssignmentStatusAssigned, mapping.Status)
+		}
+
+		// Verify distribution is balanced (5 each)
+		worker1Count := 0
+		worker2Count := 0
+		for _, mapping := range response.Mapping {
+			if mapping.OwnerId == "worker-1" {
+				worker1Count++
+			} else if mapping.OwnerId == "worker-2" {
+				worker2Count++
+			}
+		}
+		assert.Equal(t, 5, worker1Count, "worker-1 should have 5 partitions")
+		assert.Equal(t, 5, worker2Count, "worker-2 should have 5 partitions")
+	})
+
+	// Test 2: Distribution with existing partitions (sticky assignment)
+	t.Run("distribution with existing partitions - sticky assignment", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockWorkerService := NewMockWorkerService(ctrl)
+		mockPartitionService := NewMockPartitionService(ctrl)
+		mockDomainService := NewMockDomainService(ctrl)
+
+		d := distributorStrategyV1Impl{
+			CrossFunction: gox.NewCrossFunction(),
+			ws:            mockWorkerService,
+			ps:            mockPartitionService,
+			ds:            mockDomainService,
+		}
+
+		// Setup mocks with existing assignments
+		mockDomainService.EXPECT().GetTaskListInfo(gomock.Any(), "test-domain", "test-tasklist").
+			Return(&helixDomainMysql.HelixDomain{PartitionCount: 6}, nil)
+
+		mockWorkerService.EXPECT().GetActiveWorkers(gomock.Any(), "test-domain").
+			Return([]string{"worker-1", "worker-2"}, nil)
+
+		mockPartitionService.EXPECT().GetActivePartitionMappings(gomock.Any(), "test-domain", "test-tasklist").
+			Return([]WorkerPartitionMapping{
 				{
-					OwnerID: "1",
+					OwnerID: "worker-1",
 					Mapping: map[int]DistributionMapping{
 						0: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
 						1: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
 						2: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
 					},
 				},
-			},
-			nil,
-		)
+				{
+					OwnerID: "worker-2",
+					Mapping: map[int]DistributionMapping{
+						3: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+						4: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+						5: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+					},
+				},
+			}, nil)
 
-	distributionResponse, err := d.Distribute(context.Background(), DistributionRequest{DomainName: "test", TaskList: "test"})
-	assert.NoError(t, err)
-	// assert.Equal(t, []string{"node-1", "node-2"}, distributionResponse.TaskList)
-	_ = distributionResponse
+		// Execute
+		response, err := d.Distribute(context.Background(), DistributionRequest{
+			DomainName: "test-domain",
+			TaskList:   "test-tasklist",
+		})
+
+		// Verify
+		assert.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, 6, len(response.Mapping))
+
+		// Verify sticky assignment - partitions stay with original owners
+		assert.Equal(t, "worker-1", response.Mapping[0].OwnerId)
+		assert.Equal(t, "worker-1", response.Mapping[1].OwnerId)
+		assert.Equal(t, "worker-1", response.Mapping[2].OwnerId)
+		assert.Equal(t, "worker-2", response.Mapping[3].OwnerId)
+		assert.Equal(t, "worker-2", response.Mapping[4].OwnerId)
+		assert.Equal(t, "worker-2", response.Mapping[5].OwnerId)
+	})
+
+	// Test 3: Distribution with worker scale-down
+	t.Run("distribution with worker scale-down", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockWorkerService := NewMockWorkerService(ctrl)
+		mockPartitionService := NewMockPartitionService(ctrl)
+		mockDomainService := NewMockDomainService(ctrl)
+
+		d := distributorStrategyV1Impl{
+			CrossFunction: gox.NewCrossFunction(),
+			ws:            mockWorkerService,
+			ps:            mockPartitionService,
+			ds:            mockDomainService,
+		}
+
+		// Setup mocks - worker-3 is no longer active
+		mockDomainService.EXPECT().GetTaskListInfo(gomock.Any(), "test-domain", "test-tasklist").
+			Return(&helixDomainMysql.HelixDomain{PartitionCount: 6}, nil)
+
+		mockWorkerService.EXPECT().GetActiveWorkers(gomock.Any(), "test-domain").
+			Return([]string{"worker-1", "worker-2"}, nil) // Only 2 workers now
+
+		mockPartitionService.EXPECT().GetActivePartitionMappings(gomock.Any(), "test-domain", "test-tasklist").
+			Return([]WorkerPartitionMapping{
+				{
+					OwnerID: "worker-1",
+					Mapping: map[int]DistributionMapping{
+						0: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+						1: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+					},
+				},
+				{
+					OwnerID: "worker-2",
+					Mapping: map[int]DistributionMapping{
+						2: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+						3: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+					},
+				},
+				{
+					OwnerID: "worker-3", // This worker is no longer active
+					Mapping: map[int]DistributionMapping{
+						4: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+						5: {Status: databaseCommon.PartitionAssignmentStatusAssigned},
+					},
+				},
+			}, nil)
+
+		// Execute
+		response, err := d.Distribute(context.Background(), DistributionRequest{
+			DomainName: "test-domain",
+			TaskList:   "test-tasklist",
+		})
+
+		// Verify
+		assert.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, 6, len(response.Mapping))
+
+		// Verify all partitions are redistributed
+		for i := 0; i < 6; i++ {
+			mapping := response.Mapping[i]
+			assert.Contains(t, []string{"worker-1", "worker-2"}, mapping.OwnerId,
+				"partition %d should be assigned to active workers only", i)
+		}
+
+		// Verify worker-1 and worker-2 retained their original partitions
+		assert.Equal(t, "worker-1", response.Mapping[0].OwnerId)
+		assert.Equal(t, "worker-1", response.Mapping[1].OwnerId)
+		assert.Equal(t, "worker-2", response.Mapping[2].OwnerId)
+		assert.Equal(t, "worker-2", response.Mapping[3].OwnerId)
+
+		// Verify worker-3's partitions were redistributed
+		assert.NotEqual(t, "worker-3", response.Mapping[4].OwnerId)
+		assert.NotEqual(t, "worker-3", response.Mapping[5].OwnerId)
+	})
+
+	// Test 4: Distribution with single worker
+	t.Run("distribution with single worker", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockWorkerService := NewMockWorkerService(ctrl)
+		mockPartitionService := NewMockPartitionService(ctrl)
+		mockDomainService := NewMockDomainService(ctrl)
+
+		d := distributorStrategyV1Impl{
+			CrossFunction: gox.NewCrossFunction(),
+			ws:            mockWorkerService,
+			ps:            mockPartitionService,
+			ds:            mockDomainService,
+		}
+
+		mockDomainService.EXPECT().GetTaskListInfo(gomock.Any(), "test-domain", "test-tasklist").
+			Return(&helixDomainMysql.HelixDomain{PartitionCount: 5}, nil)
+
+		mockWorkerService.EXPECT().GetActiveWorkers(gomock.Any(), "test-domain").
+			Return([]string{"worker-1"}, nil)
+
+		mockPartitionService.EXPECT().GetActivePartitionMappings(gomock.Any(), "test-domain", "test-tasklist").
+			Return([]WorkerPartitionMapping{}, nil)
+
+		// Execute
+		response, err := d.Distribute(context.Background(), DistributionRequest{
+			DomainName: "test-domain",
+			TaskList:   "test-tasklist",
+		})
+
+		// Verify
+		assert.NoError(t, err)
+		assert.NotNil(t, response)
+		assert.Equal(t, 5, len(response.Mapping))
+
+		// Verify all partitions go to single worker
+		for i := 0; i < 5; i++ {
+			assert.Equal(t, "worker-1", response.Mapping[i].OwnerId)
+		}
+	})
 }
 
 func TestBuildExisting(t *testing.T) {
