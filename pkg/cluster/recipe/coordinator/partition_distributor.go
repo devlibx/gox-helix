@@ -55,6 +55,8 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 				if err = p.internalProcess(ctx, request); err != nil {
 					slog.Error("failed to run partition distributor internal process", "err", err, "domain", request.DomainName, "tasklist", request.TaskList)
 				}
+			} else {
+				slog.Debug("(expected - not all nodes will get lock) lock not acquired for partition distributor", "domain", request.DomainName, "tasklist", request.TaskList)
 			}
 		}
 	}
