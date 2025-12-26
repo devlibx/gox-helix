@@ -119,10 +119,18 @@ func (s *E2ETestSuite) TestEndToEndDistribution() {
 		_ = s.partitionDistributor.Process(processCtx, request)
 	}()
 
-	// Wait for at least one distribution cycle to complete (ticker is 10s, lock acquisition might take time)
-	// Give it 15 seconds to ensure at least one successful cycle
-	time.Sleep(15 * time.Second)
-	cancel() // Stop the process loop
+	// Poll for results instead of fixed sleep - exits as soon as distribution completes
+	maxAttempts := 30 // 30 * 500ms = 15s max
+	for i := 0; i < maxAttempts; i++ {
+		time.Sleep(500 * time.Millisecond)
+		mappings, err := s.partitionService.GetActivePartitionMappings(ctx, domainName, tasklist)
+		if err == nil && len(mappings) > 0 {
+			// Distribution completed successfully, stop the process
+			cancel()
+			break
+		}
+	}
+	cancel() // Ensure process stops even if we hit max attempts
 
 	// 4. Verify the distribution
 	mappings, err := s.partitionService.GetActivePartitionMappings(ctx, domainName, tasklist)
