@@ -24,3 +24,7 @@ type PartitionService interface {
 type DomainService interface {
 	GetTaskListInfo(ctx context.Context, domain string, tasklist string) (*helixDomainMysql.HelixDomain, error)
 }
+
+type DistributorStrategy interface {
+	Distribute(ctx context.Context, request DistributionRequest) (*DistributionResponse, error)
+}

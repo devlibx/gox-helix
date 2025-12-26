@@ -147,3 +147,42 @@ func (mr *MockDomainServiceMockRecorder) GetTaskListInfo(ctx, domain, tasklist a
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskListInfo", reflect.TypeOf((*MockDomainService)(nil).GetTaskListInfo), ctx, domain, tasklist)
 }
+
+// MockDistributorStrategy is a mock of DistributorStrategy interface.
+type MockDistributorStrategy struct {
+	ctrl     *gomock.Controller
+	recorder *MockDistributorStrategyMockRecorder
+	isgomock struct{}
+}
+
+// MockDistributorStrategyMockRecorder is the mock recorder for MockDistributorStrategy.
+type MockDistributorStrategyMockRecorder struct {
+	mock *MockDistributorStrategy
+}
+
+// NewMockDistributorStrategy creates a new mock instance.
+func NewMockDistributorStrategy(ctrl *gomock.Controller) *MockDistributorStrategy {
+	mock := &MockDistributorStrategy{ctrl: ctrl}
+	mock.recorder = &MockDistributorStrategyMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockDistributorStrategy) EXPECT() *MockDistributorStrategyMockRecorder {
+	return m.recorder
+}
+
+// Distribute mocks base method.
+func (m *MockDistributorStrategy) Distribute(ctx context.Context, request DistributionRequest) (*DistributionResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Distribute", ctx, request)
+	ret0, _ := ret[0].(*DistributionResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Distribute indicates an expected call of Distribute.
+func (mr *MockDistributorStrategyMockRecorder) Distribute(ctx, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Distribute", reflect.TypeOf((*MockDistributorStrategy)(nil).Distribute), ctx, request)
+}
