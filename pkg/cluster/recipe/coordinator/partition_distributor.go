@@ -76,6 +76,6 @@ func (p *PartitionDistributionServiceImpl) internalProcess(ctx context.Context, 
 		return errors.Wrap(err, "failed to persist distribution for domain=%s, tasklist=%s", request.DomainName, request.TaskList)
 	}
 
-	slog.Info("successfully completed partition distribution cycle", "domain", request.DomainName, "tasklist", request.TaskList)
+	slog.Debug("successfully completed partition distribution cycle", "domain", request.DomainName, "tasklist", request.TaskList)
 	return nil
 }
