@@ -95,6 +95,20 @@ func (mr *MockPartitionServiceMockRecorder) GetActivePartitionMappings(ctx, doma
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActivePartitionMappings", reflect.TypeOf((*MockPartitionService)(nil).GetActivePartitionMappings), ctx, domain, tasklist)
 }
 
+// PersistDistribution mocks base method.
+func (m *MockPartitionService) PersistDistribution(ctx context.Context, domain, tasklist string, response *DistributionResponse) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PersistDistribution", ctx, domain, tasklist, response)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PersistDistribution indicates an expected call of PersistDistribution.
+func (mr *MockPartitionServiceMockRecorder) PersistDistribution(ctx, domain, tasklist, response any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PersistDistribution", reflect.TypeOf((*MockPartitionService)(nil).PersistDistribution), ctx, domain, tasklist, response)
+}
+
 // MockDomainService is a mock of DomainService interface.
 type MockDomainService struct {
 	ctrl     *gomock.Controller

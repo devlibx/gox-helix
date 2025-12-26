@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort" // Added import for sort package
 	"testing"
 
 	"github.com/devlibx/gox-base/v2"
@@ -110,6 +111,72 @@ func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings() {
 	s.False(ok, "worker-E should not be in the result as its metadata is corrupted")
 }
 
+func (s *CoordinatorDataLayerTestSuite) TestPersistDistribution() {
+	domain := "test-domain-persist"
+	tasklist := "test-tasklist-persist"
+	ctx := context.Background()
+
+	// 1. Arrange: Seed an initial state
+	s.seedPartition(ctx, domain, tasklist, "worker-A", []int{0, 1, 2}, 1) // Assigned
+	s.seedPartition(ctx, domain, tasklist, "worker-B", []int{3, 4}, 1)    // Assigned
+	s.seedPartition(ctx, domain, tasklist, "worker-C", []int{5}, 0)    // Inactive
+
+	// 2. Arrange: Define the new target state
+	// Worker-A keeps 0, 1
+	// Worker-B loses all partitions
+	// Worker-D (a new worker) gets partitions 2, 3, 4
+	response := &DistributionResponse{
+		DomainName: domain,
+		TaskList:   tasklist,
+		Mapping: map[int]DistributionMapping{
+			0: {OwnerId: "worker-A"},
+			1: {OwnerId: "worker-A"},
+			2: {OwnerId: "worker-D"},
+			3: {OwnerId: "worker-D"},
+			4: {OwnerId: "worker-D"},
+		},
+	}
+
+	// 3. Act: Call the method under test
+	err := s.dataLayer.PersistDistribution(ctx, domain, tasklist, response)
+	s.Require().NoError(err)
+
+	// 4. Assert: Read the data back and verify it matches the new state
+	mappings, err := s.dataLayer.GetActivePartitionMappings(ctx, domain, tasklist)
+	s.Require().NoError(err)
+	s.Require().Len(mappings, 2, "Expected 2 active workers (A and D)")
+
+	// Convert to a map for easier lookup and verification
+	persistedState := make(map[string][]int)
+	for _, m := range mappings {
+		for pId := range m.Mapping {
+			persistedState[m.OwnerID] = append(persistedState[m.OwnerID], pId)
+		}
+	}
+	// Sort slices to ensure ElementsMatch works correctly
+	for owner := range persistedState {
+		sort.Ints(persistedState[owner])
+	}
+	
+	// Verify assignments for Worker-A
+	s.Contains(persistedState, "worker-A")
+	s.ElementsMatch([]int{0, 1}, persistedState["worker-A"])
+
+	// Verify assignments for Worker-D
+	s.Contains(persistedState, "worker-D")
+	s.ElementsMatch([]int{2, 3, 4}, persistedState["worker-D"])
+
+	// Verify that Worker-B and Worker-C have no active partitions
+	s.NotContains(persistedState, "worker-B")
+	s.NotContains(persistedState, "worker-C")
+
+	// Also check the DB directly to ensure worker-B's old record is now inactive (status 0)
+	var status int8
+	err = s.db.QueryRowContext(ctx, "SELECT status FROM helix_worker_partition_mapping WHERE domain = ? AND tasklist = ? AND owner_id = ?", domain, tasklist, "worker-B").Scan(&status)
+	s.Require().NoError(err)
+	s.Equal(int8(0), status, "Worker-B's record should have been marked as inactive (status 0)")
+}
+
 func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings_NoRows() {
 	// Act
 	mappings, err := s.dataLayer.GetActivePartitionMappings(context.Background(), "domain-no-rows", "tasklist-no-rows")
@@ -124,7 +191,8 @@ func (s *CoordinatorDataLayerTestSuite) seedPartition(ctx context.Context, domai
 	metadata, err := json.Marshal(partitions)
 	s.Require().NoError(err)
 
-	q := `INSERT INTO helix_worker_partition_mapping(domain, tasklist, owner_id, metadata, status) VALUES (?, ?, ?, ?, ?)`
+	q := `INSERT INTO helix_worker_partition_mapping(domain, tasklist, owner_id, metadata, status) VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE metadata=VALUES(metadata), status=VALUES(status), owner_id=VALUES(owner_id)`
 	_, err = s.db.ExecContext(ctx, q, domain, tasklist, ownerId, string(metadata), status)
 	s.Require().NoError(err, fmt.Sprintf("failed to seed partition for owner %s", ownerId))
 }

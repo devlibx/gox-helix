@@ -4,101 +4,136 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
+	"log/slog"
+
+	"github.com/devlibx/gox-base/v2"
 	helixCoordinatorMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/database"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
-	"log/slog" // Use slog for logging
 )
 
 // DataLayer provides the database access layer for coordinator functions.
-// It embeds the sqlc-generated Querier and implements the PartitionService interface.
+// It embeds the sqlc-generated concrete Queries struct and implements the PartitionService interface.
 type DataLayer struct {
 	gox.CrossFunction
-	helixCoordinatorMysql.Querier
+	*helixCoordinatorMysql.Queries // Embed the concrete Queries struct
+	db                             *sql.DB
 }
 
 // NewCoordinatorDataLayer creates a new DataLayer for the coordinator.
 func NewCoordinatorDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder) (*DataLayer, error) {
-	// Ensure we have a valid database connection
 	db := ch.GetHelixMasterDbConnection()
 	if db == nil {
 		return nil, errors.New("database connection is nil for coordinator data layer")
 	}
-
-	// Prepare the queries from the sqlc-generated code
 	q, err := helixCoordinatorMysql.Prepare(context.Background(), db)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to prepare coordinator database queries")
 	}
-
 	return &DataLayer{
-			CrossFunction: cf,
-			Querier:       q,
-		},
-		nil
+		CrossFunction: cf,
+		Queries:       q,
+		db:            db,
+	}, nil
 }
 
 // GetActivePartitionMappings implements the PartitionService interface.
-// It fetches the current partition assignments from the database and transforms them
-// into the format required by the distribution algorithm.
 func (d *DataLayer) GetActivePartitionMappings(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error) {
-	// Use the existing sqlc query to get all rows for the given domain and tasklist.
-	// Each row represents a worker and its set of assigned partitions.
 	params := helixCoordinatorMysql.GetAllValidPartitionForDomainAndTaskListParams{
 		Domain:   domain,
 		Tasklist: tasklist,
 	}
 	dbMappings, err := d.GetAllValidPartitionForDomainAndTaskList(ctx, params)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return []WorkerPartitionMapping{}, nil // No active partitions, return empty slice
+		if errors.Is(err, sql.ErrNoRows) {
+			return []WorkerPartitionMapping{}, nil
 		}
-		return nil, errors.Wrap(err, "failed to get active partition mappings from db")
+		return nil, errors.Wrap(err, "failed to get active partition mappings from db: domain=%s, tasklist=%s", domain, tasklist)
 	}
 
-	// The final slice to be returned
 	partitionMappings := make([]WorkerPartitionMapping, 0, len(dbMappings))
-
-	// Process each row (one per worker)
 	for _, row := range dbMappings {
-		// The list of partition IDs is stored in the metadata column as a JSON array.
 		if !row.Metadata.Valid || row.Metadata.String == "" {
-			slog.Warn("worker has partition mapping row with no metadata", "owner_id", row.OwnerID)
+			slog.Warn("worker has partition mapping row with no metadata", "owner_id", row.OwnerID, "domain", domain, "tasklist", tasklist)
 			continue
 		}
-
 		var partitionIds []int
 		if err := json.Unmarshal([]byte(row.Metadata.String), &partitionIds); err != nil {
 			slog.Error("failed to unmarshal partition metadata for worker", "owner_id", row.OwnerID, "metadata", row.Metadata.String, "err", err)
-			continue // Skip corrupted metadata
+			continue
 		}
-
-		// Build the inner map[int]DistributionMapping for this worker
 		mapping := make(map[int]DistributionMapping, len(partitionIds))
 		for _, pId := range partitionIds {
-
-			// Note: The database uses 1 for Assigned and 2 for Unassigned, 
-			// whereas the enum uses 0 and 1. We must map them correctly.
 			var assignmentStatus databaseCommon.PartitionAssignmentStatus
-			if row.Status == 1 { // 1 = Assigned in DB
+			if row.Status == 1 {
 				assignmentStatus = databaseCommon.PartitionAssignmentStatusAssigned
-			} else { // 2 = Unassigned in DB
+			} else {
 				assignmentStatus = databaseCommon.PartitionAssignmentStatusUnassigned
 			}
-
 			mapping[pId] = DistributionMapping{
 				OwnerId: row.OwnerID,
 				Status:  assignmentStatus,
 			}
 		}
-
-		// Add this worker's complete mapping to our result slice
 		partitionMappings = append(partitionMappings, WorkerPartitionMapping{
 			OwnerID: row.OwnerID,
 			Mapping: mapping,
 		})
 	}
-
 	return partitionMappings, nil
+}
+
+// PersistDistribution saves the new partition distribution to the database.
+func (d *DataLayer) PersistDistribution(ctx context.Context, domain string, tasklist string, response *DistributionResponse) error {
+	newState := make(map[string][]int)
+	for partitionId, mapping := range response.Mapping {
+		if mapping.OwnerId != "" { // Only consider partitions with an owner
+			newState[mapping.OwnerId] = append(newState[mapping.OwnerId], partitionId)
+		}
+	}
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to begin transaction for persisting distribution: domain=%s, tasklist=%s", domain, tasklist)
+	}
+	defer func() {
+		if err != nil {
+			if e := tx.Rollback(); e != nil {
+				slog.Error("error in rolling back in partition distribution write to DB: domain=%s, tasklist=%s, err=%s", domain, tasklist, e)
+			}
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	qtx := d.WithTx(tx) // Get a transactional querier
+
+	// Step 1: Mark all existing records for this task list as inactive.
+	// This handles workers that no longer own any partitions.
+	if err = qtx.MarkPartitionInactive(ctx, helixCoordinatorMysql.MarkPartitionInactiveParams{Domain: domain, Tasklist: tasklist}); err != nil {
+		return errors.Wrap(err, "failed to mark old partitions as inactive: domain=%s, tasklist=%s", domain, tasklist)
+	}
+
+	// Step 2: Upsert the new state for each worker.
+	for ownerId, partitionIds := range newState {
+		// Marshal the list of partitions into a JSON string for the metadata column.
+		var metadataJson []byte
+		metadataJson, err = json.Marshal(partitionIds)
+		if err != nil {
+			return errors.Wrap(err, "failed to marshal partition list for owner: domain=%s, tasklist=%s, ownerId=%s", domain, tasklist, ownerId)
+		}
+
+		// Use the UpsertPartition query to insert/update the record.
+		params := helixCoordinatorMysql.UpsertPartitionParams{
+			Domain:   domain,
+			Tasklist: tasklist,
+			OwnerID:  ownerId,
+			Metadata: sql.NullString{String: string(metadataJson), Valid: true},
+			Status:   1, // Status 1 = Assigned
+		}
+		if err = qtx.UpsertPartition(ctx, params); err != nil {
+			return errors.Wrap(err, "failed to upsert partition for owner: domain=%s, tasklist=%s, ownerId=%s", domain, tasklist, ownerId)
+		}
+	}
+
+	return err
 }
