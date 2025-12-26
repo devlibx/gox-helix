@@ -12,8 +12,8 @@ type WorkerService interface {
 }
 
 type WorkerPartitionMapping struct {
-	OwnerID string
-	Mapping map[int]DistributionMapping
+	OwnerID string                      `json:"owner_id"`
+	Mapping map[int]DistributionMapping `db:"mapping"`
 }
 
 type PartitionService interface {
