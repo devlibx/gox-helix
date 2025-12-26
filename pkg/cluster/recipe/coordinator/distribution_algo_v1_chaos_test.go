@@ -186,6 +186,9 @@ func (s *chaosSimulator) validateNoDuplicates(response *DistributionResponse) {
 func (s *chaosSimulator) validateAllPartitionsAssigned() {
 	require.NotNil(s.t, s.currentDistribution, "No distribution available")
 
+	require.True(s.t, s.config.partitionCount > 0, "Partition count should be greater than zero")
+	require.True(s.t, s.config.partitionCount == len(s.currentDistribution.Mapping), "Partition count should be same as currentDistribution.Mapping")
+
 	for i := 0; i < s.config.partitionCount; i++ {
 		mapping, exists := s.currentDistribution.Mapping[i]
 		require.True(s.t, exists, "Partition %d is not assigned", i)
@@ -390,12 +393,12 @@ func TestDistributeChaos_StructuredScenario(t *testing.T) {
 
 	// Structured scenario timeline
 	scenarioTimers := []*time.Timer{
-		time.NewTimer(1 * time.Second),  // Add 5 workers → 8 total
-		time.NewTimer(2 * time.Second),  // Remove 3 workers → 5 total
-		time.NewTimer(3 * time.Second),  // Add 2 workers → 7 total
-		time.NewTimer(4 * time.Second),  // Remove 4 workers → 3 total
-		time.NewTimer(5 * time.Second),  // Freeze (Phase 1 end)
-		time.NewTimer(7 * time.Second),  // Test complete (Phase 2 end)
+		time.NewTimer(1 * time.Second), // Add 5 workers → 8 total
+		time.NewTimer(2 * time.Second), // Remove 3 workers → 5 total
+		time.NewTimer(3 * time.Second), // Add 2 workers → 7 total
+		time.NewTimer(4 * time.Second), // Remove 4 workers → 3 total
+		time.NewTimer(5 * time.Second), // Freeze (Phase 1 end)
+		time.NewTimer(7 * time.Second), // Test complete (Phase 2 end)
 	}
 	defer func() {
 		for _, timer := range scenarioTimers {

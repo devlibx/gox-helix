@@ -52,6 +52,8 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 		ticker := time.NewTicker(1 * time.Second)
 		for {
 			select {
+			case <-ctx.Done():
+				goto exit
 			case <-ticker.C:
 				result, err := m.dataLayer.SendHeartbeat(context.Background(), helixWorkerMysql.SendHeartbeatParams{
 					LastHeartbeatAt: m.Now(),
