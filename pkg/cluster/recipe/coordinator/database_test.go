@@ -1,0 +1,134 @@
+package coordinator
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-helix"
+	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/stretchr/testify/suite"
+	"go.uber.org/fx"
+)
+
+type CoordinatorDataLayerTestSuite struct {
+	suite.Suite
+	dataLayer *DataLayer
+	db        *sql.DB
+}
+
+func (s *CoordinatorDataLayerTestSuite) SetupSuite() {
+	if os.Getenv("INTEGRATION_TESTS") != "true" {
+		s.T().Skip("Skipping integration tests: Set INTEGRATION_TESTS=true to run")
+	}
+
+	// Setup test env and sql connection
+	helix.SetupTestEnv()
+	app := fx.New(
+		fx.Provide(gox.NewCrossFunction),
+		fx.Provide(func() (*sql.DB, error) {
+			return sql.Open("mysql", helix.GetDefaultSqlUrl())
+		}),
+		fx.Provide(databaseCommon.NewConnectionHolder),
+		fx.Provide(NewCoordinatorDataLayer),
+		fx.Populate(&s.dataLayer, &s.db),
+	)
+
+	err := app.Start(context.Background())
+	s.Require().NoError(err, "fx app failed to start")
+}
+
+func (s *CoordinatorDataLayerTestSuite) SetupTest() {
+	// Clean the table before each test
+	_, err := s.db.Exec("DELETE FROM helix_worker_partition_mapping")
+	s.Require().NoError(err)
+}
+
+func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings() {
+	domain := "test-domain"
+	tasklist := "test-tasklist"
+	ctx := context.Background()
+
+	// Arrange: Insert test data using explicit status values for clarity
+	// Status 1 = Assigned, Status 0 = Inactive. The query looks for status 1 or 2.
+	s.seedPartition(ctx, domain, tasklist, "worker-A", []int{0, 1, 5}, 1) // Assigned
+	s.seedPartition(ctx, domain, tasklist, "worker-B", []int{2, 3}, 1)    // Assigned
+	s.seedPartition(ctx, domain, tasklist, "worker-C", []int{8, 9}, 0)    // Inactive - Should be ignored
+	s.seedPartition(ctx, domain, tasklist, "worker-D", []int{10}, 1)   // Assigned
+	// Seed a record with corrupted metadata
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO helix_worker_partition_mapping(domain, tasklist, owner_id, metadata, status) VALUES (?, ?, ?, ?, ?)`,
+		domain, tasklist, "worker-E", "corrupted-json", 1, // Assigned
+	)
+	s.Require().NoError(err)
+
+	// Act: Call the method under test
+	mappings, err := s.dataLayer.GetActivePartitionMappings(ctx, domain, tasklist)
+	s.NoError(err)
+	s.NotNil(mappings)
+
+	// Assert: Check the results
+	s.Len(mappings, 3, "Expected mappings for 3 active workers (A, B, D)")
+
+	// Convert to a map for easier lookup
+	resultMap := make(map[string]WorkerPartitionMapping)
+	for _, m := range mappings {
+		resultMap[m.OwnerID] = m
+	}
+
+	// Verify Worker A
+	workerAMapping, ok := resultMap["worker-A"]
+	s.True(ok, "worker-A should be in the result")
+	s.Len(workerAMapping.Mapping, 3, "worker-A should have 3 partitions")
+	s.Contains(workerAMapping.Mapping, 0)
+	s.Contains(workerAMapping.Mapping, 1)
+	s.Contains(workerAMapping.Mapping, 5)
+	s.Equal(databaseCommon.PartitionAssignmentStatusAssigned, workerAMapping.Mapping[0].Status)
+
+	// Verify Worker B
+	workerBMapping, ok := resultMap["worker-B"]
+	s.True(ok, "worker-B should be in the result")
+	s.Len(workerBMapping.Mapping, 2, "worker-B should have 2 partitions")
+	s.Contains(workerBMapping.Mapping, 2)
+	s.Contains(workerBMapping.Mapping, 3)
+
+	// Verify Worker D
+	workerDMapping, ok := resultMap["worker-D"]
+	s.True(ok, "worker-D should be in the result")
+	s.Len(workerDMapping.Mapping, 1, "worker-D should have 1 partition")
+	s.Contains(workerDMapping.Mapping, 10)
+
+	// Verify ignored workers are not present
+	_, ok = resultMap["worker-C"]
+	s.False(ok, "worker-C should not be in the result as it is inactive")
+	_, ok = resultMap["worker-E"]
+	s.False(ok, "worker-E should not be in the result as its metadata is corrupted")
+}
+
+func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings_NoRows() {
+	// Act
+	mappings, err := s.dataLayer.GetActivePartitionMappings(context.Background(), "domain-no-rows", "tasklist-no-rows")
+
+	// Assert
+	s.NoError(err)
+	s.NotNil(mappings)
+	s.Len(mappings, 0)
+}
+
+func (s *CoordinatorDataLayerTestSuite) seedPartition(ctx context.Context, domain, tasklist, ownerId string, partitions []int, status int8) {
+	metadata, err := json.Marshal(partitions)
+	s.Require().NoError(err)
+
+	q := `INSERT INTO helix_worker_partition_mapping(domain, tasklist, owner_id, metadata, status) VALUES (?, ?, ?, ?, ?)`
+	_, err = s.db.ExecContext(ctx, q, domain, tasklist, ownerId, string(metadata), status)
+	s.Require().NoError(err, fmt.Sprintf("failed to seed partition for owner %s", ownerId))
+}
+
+func TestCoordinatorDataLayer(t *testing.T) {
+	suite.Run(t, new(CoordinatorDataLayerTestSuite))
+}
