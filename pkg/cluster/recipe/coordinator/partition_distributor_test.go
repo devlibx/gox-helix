@@ -62,9 +62,9 @@ func (s *PartitionDistributorTestSuite) SetupSuite() {
 
 func (s *PartitionDistributorTestSuite) SetupTest() {
 	// Clean the table before each test
-	_, err := s.db.Exec("DELETE FROM helix_worker_partition_mapping WHERE domain like 'automation-%'")
+	_, err := s.db.Exec("DELETE FROM helix_worker_partition_mapping WHERE domain like 'dev-automation-%'")
 	s.Require().NoError(err)
-	_, err = s.db.Exec("DELETE FROM helix_domain WHERE domain like 'automation-%'")
+	_, err = s.db.Exec("DELETE FROM helix_domain WHERE domain like 'dev-automation-%'")
 	s.Require().NoError(err)
 }
 
@@ -73,8 +73,8 @@ func (s *PartitionDistributorTestSuite) TearDownSuite() {
 }
 
 func (s *PartitionDistributorTestSuite) TestInternalProcess_ColdStart() {
-	domainName := "automation-cold-start-domain"
-	tasklist := "automation-cold-start-tasklist"
+	domainName := "dev-automation-cold-start-domain"
+	tasklist := "dev-automation-cold-start-tasklist"
 	ctx := context.Background()
 
 	// 1. Arrange: Mock the distributor to return a new assignment
@@ -96,8 +96,8 @@ func (s *PartitionDistributorTestSuite) TestInternalProcess_ColdStart() {
 }
 
 func (s *PartitionDistributorTestSuite) TestInternalProcess_Rebalance() {
-	domainName := "automation-rebalance-domain"
-	tasklist := "automation-rebalance-tasklist"
+	domainName := "dev-automation-rebalance-domain"
+	tasklist := "dev-automation-rebalance-tasklist"
 	ctx := context.Background()
 
 	// 1. Arrange: Seed an initial state
