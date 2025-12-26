@@ -46,13 +46,13 @@ func (s *CoordinatorDataLayerTestSuite) SetupSuite() {
 
 func (s *CoordinatorDataLayerTestSuite) SetupTest() {
 	// Clean the table before each test
-	_, err := s.db.Exec("DELETE FROM helix_worker_partition_mapping")
+	_, err := s.db.Exec("DELETE FROM helix_worker_partition_mapping WHERE domain LIKE 'automation-%'")
 	s.Require().NoError(err)
 }
 
 func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings() {
-	domain := "test-domain"
-	tasklist := "test-tasklist"
+	domain := "automation-test-domain"
+	tasklist := "automation-test-tasklist"
 	ctx := context.Background()
 
 	// Arrange: Insert test data using explicit status values for clarity
@@ -112,8 +112,8 @@ func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings() {
 }
 
 func (s *CoordinatorDataLayerTestSuite) TestPersistDistribution() {
-	domain := "test-domain-persist"
-	tasklist := "test-tasklist-persist"
+	domain := "automation-test-domain-persist"
+	tasklist := "automation-test-tasklist-persist"
 	ctx := context.Background()
 
 	// 1. Arrange: Seed an initial state
@@ -179,7 +179,7 @@ func (s *CoordinatorDataLayerTestSuite) TestPersistDistribution() {
 
 func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings_NoRows() {
 	// Act
-	mappings, err := s.dataLayer.GetActivePartitionMappings(context.Background(), "domain-no-rows", "tasklist-no-rows")
+	mappings, err := s.dataLayer.GetActivePartitionMappings(context.Background(), "automation-domain-no-rows", "automation-tasklist-no-rows")
 
 	// Assert
 	s.NoError(err)
