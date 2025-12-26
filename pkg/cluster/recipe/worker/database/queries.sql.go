@@ -38,7 +38,7 @@ const getAllActiveWorkersByDomain = `-- name: GetAllActiveWorkersByDomain :many
 SELECT worker_id
 FROM helix_workers
 WHERE domain = ?
-  and status = 1
+  and status = 'active'
 `
 
 // GetAllActiveWorkersByDomain
@@ -46,7 +46,7 @@ WHERE domain = ?
 //	SELECT worker_id
 //	FROM helix_workers
 //	WHERE domain = ?
-//	  and status = 1
+//	  and status = 'active'
 func (q *Queries) GetAllActiveWorkersByDomain(ctx context.Context, domain string) ([]string, error) {
 	rows, err := q.query(ctx, q.getAllActiveWorkersByDomainStmt, getAllActiveWorkersByDomain, domain)
 	if err != nil {

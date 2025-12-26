@@ -25,3 +25,10 @@ func NewDomainDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder
 		queries:       q,
 	}, err
 }
+
+func (d *DataLayer) GetTaskListInfo(ctx context.Context, domain string, tasklist string) (*helixDomainMysql.HelixDomain, error) {
+	return d.GetDomainByDomainAndTasklist(ctx, helixDomainMysql.GetDomainByDomainAndTasklistParams{
+		Domain:   domain,
+		Tasklist: tasklist,
+	})
+}

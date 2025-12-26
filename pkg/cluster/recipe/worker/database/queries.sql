@@ -32,4 +32,4 @@ WHERE worker_id = ?
 SELECT worker_id
 FROM helix_workers
 WHERE domain = ?
-  and status = 1;
+  and status = 'active';

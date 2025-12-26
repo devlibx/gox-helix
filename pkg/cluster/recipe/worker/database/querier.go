@@ -22,7 +22,7 @@ type Querier interface {
 	//  SELECT worker_id
 	//  FROM helix_workers
 	//  WHERE domain = ?
-	//    and status = 1
+	//    and status = 'active'
 	GetAllActiveWorkersByDomain(ctx context.Context, domain string) ([]string, error)
 	//GetWorker
 	//
