@@ -98,7 +98,7 @@ func (d *DataLayer) PersistDistribution(ctx context.Context, domain string, task
 	defer func() {
 		if err != nil {
 			if e := tx.Rollback(); e != nil {
-				slog.Error("error in rolling back in partition distribution write to DB: domain=%s, tasklist=%s, err=%s", domain, tasklist, e)
+				slog.Error("error in rolling back in partition distribution write to DB", "domain", domain, "tasklist", tasklist, "error", e)
 			}
 		} else {
 			err = tx.Commit()
