@@ -50,6 +50,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 		if _, ok := d.tasklistProcessor[task]; !ok {
 			d.tasklistProcessor[task] = NewTasklistProcessor(
 				d.CrossFunction,
+				NewDefaultTasklistProcessorConfig(),
 				d.lockService,
 				d.stopSignal,
 				d.domain,

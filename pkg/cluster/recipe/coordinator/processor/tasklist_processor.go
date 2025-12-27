@@ -13,26 +13,19 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	// How often to "work" (log a message)
-	workInterval = 1 * time.Second
-	// How often to refresh the lock
-	refreshInterval = 5 * time.Second
-	// How long the lock should be held for. Must be > refreshInterval
-	lockTTL = 15 * time.Second
-)
-
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
 type tasklistProcessorImpl struct {
 	gox.CrossFunction
-	lockService locker.Locker
-	stopSignal  *common.ApplicationStopSignal
-	domain      string
-	tasklist    string
-	partition   int
-	lockKey     string
-	ownerId     string
-	logPrefix   string
+	config       *TasklistProcessorConfig
+	lockService  locker.Locker
+	stopSignal   *common.ApplicationStopSignal
+	domain       string
+	tasklist     string
+	partition    int
+	lockKey      string
+	ownerId      string
+	logPrefix    string
+	workCallback func() // For testing purposes
 
 	mutex    sync.Mutex
 	running  bool
@@ -44,6 +37,7 @@ type tasklistProcessorImpl struct {
 // It also starts a background goroutine to listen for the application-wide stop signal.
 func NewTasklistProcessor(
 	cf gox.CrossFunction,
+	config *TasklistProcessorConfig,
 	lockService locker.Locker,
 	stopSignal *common.ApplicationStopSignal,
 	domain string,
@@ -52,6 +46,7 @@ func NewTasklistProcessor(
 ) TasklistProcessor {
 	p := &tasklistProcessorImpl{
 		CrossFunction: cf,
+		config:        config,
 		lockService:   lockService,
 		stopSignal:    stopSignal,
 		domain:        domain,
@@ -78,7 +73,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResp
 	if t.running {
 		t.mutex.Unlock()
 		slog.Info(t.logPrefix+"processor already started", "lockKey", t.lockKey)
-		return &TasklistProcessResponse{}, nil
+		return &TasklistProcessResponse{Status: "ALREADY_RUNNING"}, nil
 	}
 
 	t.running = true
@@ -89,7 +84,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResp
 	go t.processingLoop()
 
 	slog.Info(t.logPrefix+"processor started", "lockKey", t.lockKey, "ownerId", t.ownerId)
-	return &TasklistProcessResponse{}, nil
+	return &TasklistProcessResponse{Status: "STARTED"}, nil
 }
 
 // processingLoop is the main background routine that acquires a lock and performs work.
@@ -119,9 +114,9 @@ func (t *tasklistProcessorImpl) processingLoop() {
 		}
 	}()
 
-	workTicker := time.NewTicker(workInterval)
+	workTicker := time.NewTicker(t.config.WorkInterval)
 	defer workTicker.Stop()
-	refreshTicker := time.NewTicker(refreshInterval)
+	refreshTicker := time.NewTicker(t.config.LockAcquireRefreshInterval)
 	defer refreshTicker.Stop()
 
 	lockHeld := true
@@ -130,6 +125,9 @@ func (t *tasklistProcessorImpl) processingLoop() {
 		case <-workTicker.C:
 			if lockHeld {
 				slog.Info(t.logPrefix + "...processing...")
+				if t.workCallback != nil {
+					t.workCallback()
+				}
 			} else {
 				slog.Info(t.logPrefix + "...suspended (lock not held)...")
 			}
@@ -139,7 +137,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 				Domain:  t.domain,
 				LockKey: t.lockKey,
 				OwnerId: t.ownerId,
-				TTL:     lockTTL,
+				TTL:     t.config.LockTTL,
 			}); err != nil {
 				if lockHeld {
 					slog.Error(t.logPrefix+"failed to refresh lock, suspending work", "lockKey", t.lockKey, "err", err)
@@ -164,7 +162,6 @@ func (t *tasklistProcessorImpl) processingLoop() {
 // acquireInitialLock contains the logic to persistently try to acquire the distributed lock.
 func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 	for {
-
 		// If we found that we already stopped then not need to continue
 		select {
 		case <-t.stopChan:
@@ -178,7 +175,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 			Domain:  t.domain,
 			LockKey: t.lockKey,
 			OwnerId: t.ownerId,
-			TTL:     lockTTL,
+			TTL:     t.config.LockTTL,
 		}); err == nil {
 			slog.Info(t.logPrefix+"initial lock acquired", "lockKey", t.lockKey)
 			return true
@@ -188,7 +185,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 
 		// Retry loc but also stop if we found we are stopped in middle
 		select {
-		case <-time.After(refreshInterval):
+		case <-time.After(t.config.LockAcquireRefreshInterval):
 		case <-t.stopChan:
 			slog.Info(t.logPrefix + "stop signal received while waiting to retry, stopping processor")
 			return false

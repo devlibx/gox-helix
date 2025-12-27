@@ -72,9 +72,8 @@ func (l *lockImpl) ReleaseLock(ctx context.Context, req ReleaseLockRequest) (*Re
 
 func NewLocker(cf gox.CrossFunction, dataLayer *DataLayer) (Locker, error) {
 	return &lockImpl{
-		CrossFunction: cf,
-		dataLayer:     dataLayer,
-	},
-	nil
+			CrossFunction: cf,
+			dataLayer:     dataLayer,
+		},
+		nil
 }
-

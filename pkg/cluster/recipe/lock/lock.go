@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+//go:generate mockgen -source=lock.go -destination=mocks.go -package=locker
+
 // LockNotAcquiredError represents an error where a lock could not be acquired because it's already held.
 type LockNotAcquiredError struct {
 	Domain  string
