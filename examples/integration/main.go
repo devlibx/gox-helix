@@ -43,20 +43,14 @@ func main() {
 		fx.Provide(databaseCommon.NewConnectionHolder),
 		fx.Provide(helper.NewWorkerHelper),
 
-		// Locker
-		fx.Provide(locker.NewLockerDataLayer),
-		fx.Provide(locker.NewLocker),
-
-		// Coordinator
-		fx.Provide(coordinator.NewCoordinatorDataLayer),
+		// All setup for this framework
+		fx.Provide(locker.NewLockerDataLayer),           // Locker data layer
+		fx.Provide(locker.NewLocker),                    // Locker
+		fx.Provide(coordinator.NewCoordinatorDataLayer), // Coordinator
+		fx.Provide(worker.NewWorkerDataLayer),           // Worker
+		fx.Provide(domain.NewDomainDataLayer),           // Domain
 		fx.Provide(func(dataLayer *coordinator.DataLayer) coordinator.PartitionService { return dataLayer }),
-
-		// Worker
-		fx.Provide(worker.NewWorkerDataLayer),
 		fx.Provide(func(dataLayer *worker.DataLayer) coordinator.WorkerService { return dataLayer }),
-
-		// Domain
-		fx.Provide(domain.NewDomainDataLayer),
 		fx.Provide(func(dataLayer *domain.DataLayer) coordinator.DomainService { return dataLayer }),
 
 		fx.Populate(
