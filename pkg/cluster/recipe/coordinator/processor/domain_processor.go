@@ -64,6 +64,15 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 	return &DomainTasklistProcessResponse{}, nil
 }
 
+func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
+	d.activePartitionsMutex.Lock()
+	defer d.activePartitionsMutex.Unlock()
+	for _, activePartition := range d.activePartitions {
+		_ = d.tasklistProcessor[activePartition].Stop(context.Background())
+	}
+	return nil
+}
+
 func NewDomainTasklistProcessor(
 	cf gox.CrossFunction,
 	stopSignal *common.ApplicationStopSignal,

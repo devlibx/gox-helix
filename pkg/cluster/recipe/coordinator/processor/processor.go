@@ -10,6 +10,8 @@ import (
 
 type Factory interface {
 	GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string) (DomainTasklistProcessor, error)
+
+	Stop(ctx context.Context) error
 }
 
 type factoryImpl struct {
@@ -33,6 +35,15 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, do
 		)
 	}
 	return f.DomainTasklistProcessors[domain], nil
+}
+
+func (f *factoryImpl) Stop(ctx context.Context) error {
+	f.DomainTasklistProcessorsMutex.Lock()
+	defer f.DomainTasklistProcessorsMutex.Unlock()
+	for _, processor := range f.DomainTasklistProcessors {
+		_ = processor.Stop(ctx)
+	}
+	return nil
 }
 
 func NewProcessorFactory(

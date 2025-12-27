@@ -25,6 +25,8 @@ type DomainTasklistProcessResponse struct {
 
 type DomainTasklistProcessor interface {
 	Process(ctx context.Context, request DomainTasklistProcessRequest) (*DomainTasklistProcessResponse, error)
+
+	Stop(context.Context) error
 }
 
 // TasklistProcessor defines the interface for a background processor that manages a
