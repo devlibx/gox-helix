@@ -1,6 +1,7 @@
 package common
 
 import (
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/helper"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
@@ -8,8 +9,9 @@ import (
 )
 
 type ApplicationCtx struct {
-	ConnectionHolder databaseCommon.ConnectionHolder
-	WorkerHelper     *helper.WorkerHelper
-	WorkerDataLayer  *worker.DataLayer
-	DomainDataLayer  *domain.DataLayer
+	ConnectionHolder             databaseCommon.ConnectionHolder
+	WorkerHelper                 *helper.WorkerHelper
+	WorkerDataLayer              *worker.DataLayer
+	DomainDataLayer              *domain.DataLayer
+	PartitionDistributionService coordinator.PartitionDistributionService
 }

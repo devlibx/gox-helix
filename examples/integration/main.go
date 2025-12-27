@@ -18,6 +18,7 @@ import (
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/fx"
+	"time"
 )
 
 //go:embed config.yaml
@@ -44,6 +45,10 @@ func main() {
 		fx.Provide(helper.NewWorkerHelper),
 
 		// All setup for this framework
+		fx.Provide(coordinator.NewPartitionDistributionService),
+		fx.Provide(func(cf gox.CrossFunction, ws coordinator.WorkerService, ps coordinator.PartitionService, ds coordinator.DomainService) (coordinator.DistributorStrategy, error) {
+			return coordinator.NewDistributorStrategy(cf, ws, ps, ds)
+		}),
 		fx.Provide(locker.NewLockerDataLayer),           // Locker data layer
 		fx.Provide(locker.NewLocker),                    // Locker
 		fx.Provide(coordinator.NewCoordinatorDataLayer), // Coordinator
@@ -58,6 +63,7 @@ func main() {
 			&appCtx.WorkerDataLayer,
 			&appCtx.WorkerHelper,
 			&appCtx.ConnectionHolder,
+			&appCtx.PartitionDistributionService,
 		),
 	)
 	err = app.Start(context.Background())
@@ -80,4 +86,19 @@ func main() {
 			panic(err)
 		}
 	}
+
+	for _, domainObj := range appConfig.Domains {
+		for _, tl := range domainObj.TaskLists {
+			go func(d *config.Domain, tl *config.TaskList) {
+				err := appCtx.PartitionDistributionService.Process(context.Background(), coordinator.DistributionRequest{
+					DomainName: domainObj.Name,
+					TaskList:   tl.Name,
+				})
+				if err != nil {
+					panic(err)
+				}
+			}(domainObj, tl)
+		}
+	}
+	time.Sleep(11 * time.Second)
 }

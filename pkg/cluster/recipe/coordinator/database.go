@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/devlibx/gox-base/v2/errors"
 	"log/slog"
+	"time"
 
 	"github.com/devlibx/gox-base/v2"
 	helixCoordinatorMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/database"
@@ -83,8 +84,22 @@ func (d *DataLayer) GetActivePartitionMappings(ctx context.Context, domain strin
 	return partitionMappings, nil
 }
 
-// PersistDistribution saves the new partition distribution to the database.
 func (d *DataLayer) PersistDistribution(ctx context.Context, domain string, tasklist string, response *DistributionResponse) error {
+	var err error
+	for i := 0; i < 3; i++ {
+		err = d.internalPersistDistribution(ctx, domain, tasklist, response)
+		if err != nil {
+			slog.Warn("got error while persisting distribution (retry)", "err", err.Error(), "domain", domain, "tasklist", tasklist, "retry", i)
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	return err
+}
+
+// PersistDistribution saves the new partition distribution to the database.
+func (d *DataLayer) internalPersistDistribution(ctx context.Context, domain string, tasklist string, response *DistributionResponse) error {
 	newState := make(map[string][]int)
 	for partitionId, mapping := range response.Mapping {
 		if mapping.OwnerId != "" { // Only consider partitions with an owner
