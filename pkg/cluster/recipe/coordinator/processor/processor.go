@@ -58,5 +58,12 @@ func NewProcessorFactory(
 		DomainTasklistProcessors:      map[string]DomainTasklistProcessor{},
 		DomainTasklistProcessorsMutex: &sync.Mutex{},
 	}
+
+	// Make sure we stop everything when we get stop signal
+	go func() {
+		<-stopSignal.Ctx.Done()
+		_ = f.Stop(context.Background())
+	}()
+
 	return f
 }
