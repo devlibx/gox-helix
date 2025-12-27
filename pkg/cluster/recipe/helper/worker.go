@@ -62,28 +62,23 @@ func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
 	go func() {
 		for {
 			for tasklistName, _ := range domain.TaskLists {
+				if tasklistName != "driver_pickup" {
+					continue
+				}
 				for _, workerId := range workerIds {
-					go func() {
-						if result, err := w.partitionService.GetValidPartitionByOwnerId(ctx, domain.Name, tasklistName); err == nil {
-							for _, r := range result {
-								if r.OwnerID == workerId && tasklistName == "driver_pickup" {
-									p := make([]int, 0)
-									for k, _ := range r.Mapping {
-										p = append(p, k)
-									}
-									sort.Ints(p)
-									slog.Info("these are the worker", "domain", domain.Name, "tasklist", tasklistName, "workerId", workerId, "partitions", p)
-								}
-							}
+					if workerPartitionMapping, err := w.partitionService.GetValidPartitionByOwnerIdV1(ctx, domain.Name, tasklistName, workerId); err == nil {
+						p := make([]int, 0)
+						for k, _ := range workerPartitionMapping.Mapping {
+							p = append(p, k)
 						}
-					}()
+						sort.Ints(p)
+						slog.Info("these are the worker", "domain", domain.Name, "tasklist", tasklistName, "workerId", workerId, "partitions", p)
+					}
 				}
 			}
-
 			time.Sleep(1 * time.Second)
 		}
 	}()
-
 	return nil
 }
 

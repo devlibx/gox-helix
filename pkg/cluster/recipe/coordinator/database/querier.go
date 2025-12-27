@@ -43,6 +43,16 @@ type Querier interface {
 	//    AND tasklist = ?
 	//    AND status in (1, 2)
 	GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPartitionByOwnerIdParams) ([]*HelixWorkerPartitionMapping, error)
+	//GetValidPartitionByOwnerIdV1
+	//
+	//  SELECT /*+ MAX_EXECUTION_TIME(1000) */
+	//      id, domain, tasklist, owner_id, status, metadata, created_at, updated_at
+	//  FROM helix_worker_partition_mapping
+	//  WHERE domain = ?
+	//    AND tasklist = ?
+	//    AND owner_id = ?
+	//    AND status in (1, 2)
+	GetValidPartitionByOwnerIdV1(ctx context.Context, arg GetValidPartitionByOwnerIdV1Params) ([]*HelixWorkerPartitionMapping, error)
 	//MarkPartitionAssigned
 	//
 	//  UPDATE helix_worker_partition_mapping

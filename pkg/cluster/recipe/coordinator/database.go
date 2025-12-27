@@ -154,6 +154,7 @@ func (d *DataLayer) internalPersistDistribution(ctx context.Context, domain stri
 }
 
 func (d *DataLayer) GetValidPartitionByOwnerId(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error) {
+
 	result, err := d.Queries.GetValidPartitionByOwnerId(ctx, helixCoordinatorMysql.GetValidPartitionByOwnerIdParams{
 		Domain:   domain,
 		Tasklist: tasklist,
@@ -180,4 +181,32 @@ func (d *DataLayer) GetValidPartitionByOwnerId(ctx context.Context, domain strin
 		}
 	}
 	return m, nil
+}
+
+func (d *DataLayer) GetValidPartitionByOwnerIdV1(ctx context.Context, domain string, tasklist string, ownerId string) (*WorkerPartitionMapping, error) {
+	result, err := d.Queries.GetValidPartitionByOwnerIdV1(ctx, helixCoordinatorMysql.GetValidPartitionByOwnerIdV1Params{
+		Domain:   domain,
+		Tasklist: tasklist,
+		OwnerID:  ownerId,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := &WorkerPartitionMapping{
+		OwnerID: ownerId,
+		Mapping: make(map[int]DistributionMapping),
+	}
+	for _, r := range result {
+		var partitions []int
+		if err := json.Unmarshal([]byte(r.Metadata.String), &partitions); err == nil {
+			for _, partition := range partitions {
+				out.Mapping[partition] = DistributionMapping{
+					OwnerId: ownerId,
+					Status:  databaseCommon.PartitionAssignmentStatus(r.Status),
+				}
+			}
+		}
+	}
+	return out, nil
 }

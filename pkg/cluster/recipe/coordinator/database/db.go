@@ -36,6 +36,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getValidPartitionByOwnerIdStmt, err = db.PrepareContext(ctx, getValidPartitionByOwnerId); err != nil {
 		return nil, fmt.Errorf("error preparing query GetValidPartitionByOwnerId: %w", err)
 	}
+	if q.getValidPartitionByOwnerIdV1Stmt, err = db.PrepareContext(ctx, getValidPartitionByOwnerIdV1); err != nil {
+		return nil, fmt.Errorf("error preparing query GetValidPartitionByOwnerIdV1: %w", err)
+	}
 	if q.markPartitionAssignedStmt, err = db.PrepareContext(ctx, markPartitionAssigned); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkPartitionAssigned: %w", err)
 	}
@@ -71,6 +74,11 @@ func (q *Queries) Close() error {
 	if q.getValidPartitionByOwnerIdStmt != nil {
 		if cerr := q.getValidPartitionByOwnerIdStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getValidPartitionByOwnerIdStmt: %w", cerr)
+		}
+	}
+	if q.getValidPartitionByOwnerIdV1Stmt != nil {
+		if cerr := q.getValidPartitionByOwnerIdV1Stmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getValidPartitionByOwnerIdV1Stmt: %w", cerr)
 		}
 	}
 	if q.markPartitionAssignedStmt != nil {
@@ -136,6 +144,7 @@ type Queries struct {
 	getAllValidPartitionForDomainAndTaskListStmt *sql.Stmt
 	getPartitionByOwnerIdStmt                    *sql.Stmt
 	getValidPartitionByOwnerIdStmt               *sql.Stmt
+	getValidPartitionByOwnerIdV1Stmt             *sql.Stmt
 	markPartitionAssignedStmt                    *sql.Stmt
 	markPartitionInactiveStmt                    *sql.Stmt
 	markPartitionUnassignedStmt                  *sql.Stmt
@@ -150,6 +159,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAllValidPartitionForDomainAndTaskListStmt: q.getAllValidPartitionForDomainAndTaskListStmt,
 		getPartitionByOwnerIdStmt:                    q.getPartitionByOwnerIdStmt,
 		getValidPartitionByOwnerIdStmt:               q.getValidPartitionByOwnerIdStmt,
+		getValidPartitionByOwnerIdV1Stmt:             q.getValidPartitionByOwnerIdV1Stmt,
 		markPartitionAssignedStmt:                    q.markPartitionAssignedStmt,
 		markPartitionInactiveStmt:                    q.markPartitionInactiveStmt,
 		markPartitionUnassignedStmt:                  q.markPartitionUnassignedStmt,
