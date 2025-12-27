@@ -1,0 +1,19 @@
+domains:
+  mobility:
+    worker_count_to_process_domain: 4
+    task_list:
+      booking:
+        partition_count: 4
+      allocation:
+        partition_count: 4
+      refund:
+        partition_count: 8
+  food:
+    worker_count_to_process_domain: 2
+    task_list:
+      driver_allocation:
+        partition_count: 3
+      driver_pickup:
+        partition_count: 6
+      delivered:
+        partition_count: 9
