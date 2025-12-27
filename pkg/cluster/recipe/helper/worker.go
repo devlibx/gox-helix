@@ -66,7 +66,7 @@ func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
 					continue
 				}
 				for _, workerId := range workerIds {
-					if workerPartitionMapping, err := w.partitionService.GetValidPartitionByOwnerIdV1(ctx, domain.Name, tasklistName, workerId); err == nil {
+					if workerPartitionMapping, err := w.partitionService.GetValidPartitionByOwnerId(ctx, domain.Name, tasklistName, workerId); err == nil {
 						p := make([]int, 0)
 						for k, _ := range workerPartitionMapping.Mapping {
 							p = append(p, k)

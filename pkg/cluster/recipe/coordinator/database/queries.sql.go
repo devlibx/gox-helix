@@ -158,12 +158,14 @@ SELECT /*+ MAX_EXECUTION_TIME(1000) */
 FROM helix_worker_partition_mapping
 WHERE domain = ?
   AND tasklist = ?
+  AND owner_id = ?
   AND status in (1, 2)
 `
 
 type GetValidPartitionByOwnerIdParams struct {
 	Domain   string `json:"domain"`
 	Tasklist string `json:"tasklist"`
+	OwnerID  string `json:"owner_id"`
 }
 
 // GetValidPartitionByOwnerId
@@ -173,9 +175,10 @@ type GetValidPartitionByOwnerIdParams struct {
 //	FROM helix_worker_partition_mapping
 //	WHERE domain = ?
 //	  AND tasklist = ?
+//	  AND owner_id = ?
 //	  AND status in (1, 2)
 func (q *Queries) GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPartitionByOwnerIdParams) ([]*HelixWorkerPartitionMapping, error) {
-	rows, err := q.query(ctx, q.getValidPartitionByOwnerIdStmt, getValidPartitionByOwnerId, arg.Domain, arg.Tasklist)
+	rows, err := q.query(ctx, q.getValidPartitionByOwnerIdStmt, getValidPartitionByOwnerId, arg.Domain, arg.Tasklist, arg.OwnerID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,33 +209,30 @@ func (q *Queries) GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPa
 	return items, nil
 }
 
-const getValidPartitionByOwnerIdV1 = `-- name: GetValidPartitionByOwnerIdV1 :many
+const getValidPartitionByOwnerIdDeleteMe = `-- name: GetValidPartitionByOwnerIdDeleteMe :many
 SELECT /*+ MAX_EXECUTION_TIME(1000) */
     id, domain, tasklist, owner_id, status, metadata, created_at, updated_at
 FROM helix_worker_partition_mapping
 WHERE domain = ?
   AND tasklist = ?
-  AND owner_id = ?
   AND status in (1, 2)
 `
 
-type GetValidPartitionByOwnerIdV1Params struct {
+type GetValidPartitionByOwnerIdDeleteMeParams struct {
 	Domain   string `json:"domain"`
 	Tasklist string `json:"tasklist"`
-	OwnerID  string `json:"owner_id"`
 }
 
-// GetValidPartitionByOwnerIdV1
+// GetValidPartitionByOwnerIdDeleteMe
 //
 //	SELECT /*+ MAX_EXECUTION_TIME(1000) */
 //	    id, domain, tasklist, owner_id, status, metadata, created_at, updated_at
 //	FROM helix_worker_partition_mapping
 //	WHERE domain = ?
 //	  AND tasklist = ?
-//	  AND owner_id = ?
 //	  AND status in (1, 2)
-func (q *Queries) GetValidPartitionByOwnerIdV1(ctx context.Context, arg GetValidPartitionByOwnerIdV1Params) ([]*HelixWorkerPartitionMapping, error) {
-	rows, err := q.query(ctx, q.getValidPartitionByOwnerIdV1Stmt, getValidPartitionByOwnerIdV1, arg.Domain, arg.Tasklist, arg.OwnerID)
+func (q *Queries) GetValidPartitionByOwnerIdDeleteMe(ctx context.Context, arg GetValidPartitionByOwnerIdDeleteMeParams) ([]*HelixWorkerPartitionMapping, error) {
+	rows, err := q.query(ctx, q.getValidPartitionByOwnerIdDeleteMeStmt, getValidPartitionByOwnerIdDeleteMe, arg.Domain, arg.Tasklist)
 	if err != nil {
 		return nil, err
 	}

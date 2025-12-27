@@ -34,7 +34,7 @@ FROM helix_worker_partition_mapping
 WHERE domain = ?
   AND tasklist = ?;
 
--- name: GetValidPartitionByOwnerId :many
+-- name: GetValidPartitionByOwnerIdDeleteMe :many
 SELECT /*+ MAX_EXECUTION_TIME(1000) */
     *
 FROM helix_worker_partition_mapping
@@ -59,7 +59,7 @@ WHERE domain = ?
   AND status in (1, 2);
 
 
--- name: GetValidPartitionByOwnerIdV1 :many
+-- name: GetValidPartitionByOwnerId :many
 SELECT /*+ MAX_EXECUTION_TIME(1000) */
     *
 FROM helix_worker_partition_mapping
