@@ -95,6 +95,21 @@ func (mr *MockPartitionServiceMockRecorder) GetActivePartitionMappings(ctx, doma
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActivePartitionMappings", reflect.TypeOf((*MockPartitionService)(nil).GetActivePartitionMappings), ctx, domain, tasklist)
 }
 
+// GetValidPartitionByOwnerId mocks base method.
+func (m *MockPartitionService) GetValidPartitionByOwnerId(ctx context.Context, domain, tasklist, ownerId string) (*WorkerPartitionMapping, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetValidPartitionByOwnerId", ctx, domain, tasklist, ownerId)
+	ret0, _ := ret[0].(*WorkerPartitionMapping)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetValidPartitionByOwnerId indicates an expected call of GetValidPartitionByOwnerId.
+func (mr *MockPartitionServiceMockRecorder) GetValidPartitionByOwnerId(ctx, domain, tasklist, ownerId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValidPartitionByOwnerId", reflect.TypeOf((*MockPartitionService)(nil).GetValidPartitionByOwnerId), ctx, domain, tasklist, ownerId)
+}
+
 // PersistDistribution mocks base method.
 func (m *MockPartitionService) PersistDistribution(ctx context.Context, domain, tasklist string, response *DistributionResponse) error {
 	m.ctrl.T.Helper()
