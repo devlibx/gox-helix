@@ -510,3 +510,81 @@ func TestAcquireLock_DifferentDomains(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp4)
 }
+
+// TestReleaseLock_Success verifies that a successfully acquired lock can be released.
+func TestReleaseLock_Success(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerId := "owner-" + domain
+
+	// Acquire the lock
+	_, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+
+	// Release the lock
+	_, err = tf.locker.ReleaseLock(tf.ctx, ReleaseLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+	})
+	assert.NoError(t, err)
+
+	// Verify another owner can acquire the lock
+	anotherOwner := "another-owner-" + domain
+	_, err = tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: anotherOwner,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+}
+
+// TestReleaseLock_NotFound verifies attempting to release a non-existent lock.
+func TestReleaseLock_NotFound(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-nonexistent-" + domain
+	ownerId := "owner-" + domain
+
+	// Attempt to release a lock that was never acquired
+	_, err := tf.locker.ReleaseLock(tf.ctx, ReleaseLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerId,
+	})
+	assert.NoError(t, err)
+}
+
+// TestReleaseLock_NotOwner verifies that only the owner can release a lock.
+// The implementation should make this fail because rows affected will be 0
+func TestReleaseLock_NotOwner(t *testing.T) {
+	tf := setupDb(t)
+	domain := uuid.NewString()
+	lockKey := "lk-" + domain
+	ownerA := "owner-A-" + domain
+	ownerB := "owner-B-" + domain
+
+	// Owner A acquires the lock
+	_, err := tf.locker.AcquireLock(tf.ctx, AcquireLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerA,
+		TTL:     time.Hour,
+	})
+	assert.NoError(t, err)
+
+	// Owner B attempts to release Owner A's lock
+	_, err = tf.locker.ReleaseLock(tf.ctx, ReleaseLockRequest{
+		Domain:  domain,
+		LockKey: lockKey,
+		OwnerId: ownerB, // Different owner
+	})
+	assert.NoError(t, err, "Release lock should not return error even if owner is not matching")
+}

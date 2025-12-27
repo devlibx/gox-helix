@@ -6,6 +6,7 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	helixLockMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock/database"
+	"time"
 )
 
 type lockImpl struct {
@@ -58,7 +59,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 
 func (l *lockImpl) ReleaseLock(ctx context.Context, req ReleaseLockRequest) (*ReleaseLockResponse, error) {
 	_, err := l.dataLayer.ReleaseLock(ctx, helixLockMysql.ReleaseLockParams{
-		ExpiresAt: l.Now(),
+		ExpiresAt: l.Now().Add(-1 * time.Second), // Set to 1 second in the past to ensure it's expired
 		Domain:    req.Domain,
 		LockKey:   req.LockKey,
 		OwnerID:   req.OwnerId,
