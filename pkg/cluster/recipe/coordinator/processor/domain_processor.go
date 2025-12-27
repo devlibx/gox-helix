@@ -13,6 +13,7 @@ type domainTasklistProcessorImpl struct {
 	stopSignal            *common.ApplicationStopSignal
 	lockService           locker.Locker
 	domain                string
+	tasklist              string
 	activePartitions      []int
 	activePartitionsMutex *sync.Mutex
 	tasklistProcessor     map[int]TasklistProcessor
@@ -54,7 +55,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 				d.lockService,
 				d.stopSignal,
 				d.domain,
-				request.Tasklist,
+				d.tasklist,
 				task,
 			)
 		}
@@ -78,12 +79,14 @@ func NewDomainTasklistProcessor(
 	stopSignal *common.ApplicationStopSignal,
 	lockService locker.Locker,
 	domain string,
+	tasklist string,
 ) DomainTasklistProcessor {
 	p := &domainTasklistProcessorImpl{
 		CrossFunction:         cf,
 		stopSignal:            stopSignal,
 		lockService:           lockService,
 		domain:                domain,
+		tasklist:              tasklist,
 		activePartitions:      make([]int, 0),
 		tasklistProcessor:     make(map[int]TasklistProcessor),
 		activePartitionsMutex: &sync.Mutex{},

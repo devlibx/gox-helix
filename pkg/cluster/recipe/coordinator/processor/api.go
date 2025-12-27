@@ -9,8 +9,7 @@ import (
 //go:generate mockgen -source=api.go -destination=mocks.go -package=processor
 
 type DomainTasklistProcessRequest struct {
-	Tasklist   string `json:"tasklist"`
-	Partitions []int  `json:"partitions"`
+	Partitions []int `json:"partitions"`
 }
 
 func (d *DomainTasklistProcessRequest) String() string {

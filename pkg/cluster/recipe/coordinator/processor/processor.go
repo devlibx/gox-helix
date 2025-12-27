@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/common"
@@ -9,7 +10,7 @@ import (
 )
 
 type Factory interface {
-	GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string) (DomainTasklistProcessor, error)
+	GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string, taskList string) (DomainTasklistProcessor, error)
 
 	Stop(ctx context.Context) error
 }
@@ -22,19 +23,21 @@ type factoryImpl struct {
 	DomainTasklistProcessorsMutex *sync.Mutex
 }
 
-func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string) (DomainTasklistProcessor, error) {
+func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string, taskList string) (DomainTasklistProcessor, error) {
 	f.DomainTasklistProcessorsMutex.Lock()
 	defer f.DomainTasklistProcessorsMutex.Unlock()
 
-	if _, ok := f.DomainTasklistProcessors[domain]; !ok {
-		f.DomainTasklistProcessors[domain] = NewDomainTasklistProcessor(
+	key := fmt.Sprintf("%s-%s", domain, taskList)
+	if _, ok := f.DomainTasklistProcessors[key]; !ok {
+		f.DomainTasklistProcessors[key] = NewDomainTasklistProcessor(
 			f.CrossFunction,
 			f.stopSignal,
 			f.lockService,
 			domain,
+			taskList,
 		)
 	}
-	return f.DomainTasklistProcessors[domain], nil
+	return f.DomainTasklistProcessors[key], nil
 }
 
 func (f *factoryImpl) Stop(ctx context.Context) error {

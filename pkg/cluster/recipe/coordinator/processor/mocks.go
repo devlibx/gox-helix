@@ -55,6 +55,20 @@ func (mr *MockDomainTasklistProcessorMockRecorder) Process(ctx, request any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Process", reflect.TypeOf((*MockDomainTasklistProcessor)(nil).Process), ctx, request)
 }
 
+// Stop mocks base method.
+func (m *MockDomainTasklistProcessor) Stop(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stop", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Stop indicates an expected call of Stop.
+func (mr *MockDomainTasklistProcessorMockRecorder) Stop(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockDomainTasklistProcessor)(nil).Stop), arg0)
+}
+
 // MockTasklistProcessor is a mock of TasklistProcessor interface.
 type MockTasklistProcessor struct {
 	ctrl     *gomock.Controller
