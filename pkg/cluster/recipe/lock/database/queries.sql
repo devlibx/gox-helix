@@ -19,3 +19,10 @@ ON DUPLICATE KEY UPDATE
         epoch + 1,
         epoch
     );
+
+-- name: ReleaseLock :execresult
+UPDATE helix_locks
+SET owner_id = '', expires_at = ?
+WHERE domain = ?
+  AND lock_key = ?
+  AND owner_id = ?;

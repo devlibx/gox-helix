@@ -2,7 +2,9 @@ package locker
 
 import (
 	"context"
+	"fmt"
 	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-base/v2/errors"
 	helixLockMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock/database"
 )
 
@@ -29,7 +31,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 			Domain:  req.Domain,
 			LockKey: req.LockKey,
 			OwnerId: req.OwnerId,
-			Err:     err,
+			Err:     errors.Wrap(err, "failed to acquire lock at data layer"),
 		}
 	}
 
@@ -39,7 +41,7 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 			Domain:  req.Domain,
 			LockKey: req.LockKey,
 			OwnerId: req.OwnerId,
-			Err:     err,
+			Err:     errors.Wrap(err, "failed to get rows affected"),
 		}
 	}
 
@@ -54,9 +56,24 @@ func (l *lockImpl) AcquireLock(ctx context.Context, req AcquireLockRequest) (*Ac
 	return &AcquireLockResponse{}, nil
 }
 
+func (l *lockImpl) ReleaseLock(ctx context.Context, req ReleaseLockRequest) (*ReleaseLockResponse, error) {
+	_, err := l.dataLayer.ReleaseLock(ctx, helixLockMysql.ReleaseLockParams{
+		ExpiresAt: l.Now(),
+		Domain:    req.Domain,
+		LockKey:   req.LockKey,
+		OwnerID:   req.OwnerId,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("failed to release lock for domain=%s, lockKey=%s, ownerId=%s", req.Domain, req.LockKey, req.OwnerId))
+	}
+	return &ReleaseLockResponse{}, nil
+}
+
 func NewLocker(cf gox.CrossFunction, dataLayer *DataLayer) (Locker, error) {
 	return &lockImpl{
 		CrossFunction: cf,
 		dataLayer:     dataLayer,
-	}, nil
+	},
+	nil
 }
+

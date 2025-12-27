@@ -77,3 +77,34 @@ func (q *Queries) AcquireLock(ctx context.Context, arg AcquireLockParams) (sql.R
 		arg.Column7,
 	)
 }
+
+const releaseLock = `-- name: ReleaseLock :execresult
+UPDATE helix_locks
+SET owner_id = '', expires_at = ?
+WHERE domain = ?
+  AND lock_key = ?
+  AND owner_id = ?
+`
+
+type ReleaseLockParams struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Domain    string    `json:"domain"`
+	LockKey   string    `json:"lock_key"`
+	OwnerID   string    `json:"owner_id"`
+}
+
+// ReleaseLock
+//
+//	UPDATE helix_locks
+//	SET owner_id = '', expires_at = ?
+//	WHERE domain = ?
+//	  AND lock_key = ?
+//	  AND owner_id = ?
+func (q *Queries) ReleaseLock(ctx context.Context, arg ReleaseLockParams) (sql.Result, error) {
+	return q.exec(ctx, q.releaseLockStmt, releaseLock,
+		arg.ExpiresAt,
+		arg.Domain,
+		arg.LockKey,
+		arg.OwnerID,
+	)
+}

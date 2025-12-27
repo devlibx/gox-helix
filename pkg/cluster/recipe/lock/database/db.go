@@ -27,6 +27,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.acquireLockStmt, err = db.PrepareContext(ctx, acquireLock); err != nil {
 		return nil, fmt.Errorf("error preparing query AcquireLock: %w", err)
 	}
+	if q.releaseLockStmt, err = db.PrepareContext(ctx, releaseLock); err != nil {
+		return nil, fmt.Errorf("error preparing query ReleaseLock: %w", err)
+	}
 	return &q, nil
 }
 
@@ -35,6 +38,11 @@ func (q *Queries) Close() error {
 	if q.acquireLockStmt != nil {
 		if cerr := q.acquireLockStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing acquireLockStmt: %w", cerr)
+		}
+	}
+	if q.releaseLockStmt != nil {
+		if cerr := q.releaseLockStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing releaseLockStmt: %w", cerr)
 		}
 	}
 	return err
@@ -77,6 +85,7 @@ type Queries struct {
 	db              DBTX
 	tx              *sql.Tx
 	acquireLockStmt *sql.Stmt
+	releaseLockStmt *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -84,5 +93,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:              tx,
 		tx:              tx,
 		acquireLockStmt: q.acquireLockStmt,
+		releaseLockStmt: q.releaseLockStmt,
 	}
 }

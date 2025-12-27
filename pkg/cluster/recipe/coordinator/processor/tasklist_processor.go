@@ -3,13 +3,15 @@ package processor
 import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
+	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 )
 
 type tasklistProcessorImpl struct {
 	gox.CrossFunction
-	domain    string
-	tasklist  string
-	partition int
+	lockService locker.Locker
+	domain      string
+	tasklist    string
+	partition   int
 }
 
 func (t tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResponse, error) {
@@ -22,12 +24,14 @@ func (t tasklistProcessorImpl) Stop(ctx context.Context) error {
 
 func NewTasklistProcessor(
 	cf gox.CrossFunction,
+	lockService locker.Locker,
 	domain string,
 	tasklist string,
 	partition int,
 ) TasklistProcessor {
 	p := &tasklistProcessorImpl{
 		CrossFunction: cf,
+		lockService:   lockService,
 		domain:        domain,
 		tasklist:      tasklist,
 		partition:     partition,

@@ -33,6 +33,14 @@ type Querier interface {
 	//          epoch
 	//      )
 	AcquireLock(ctx context.Context, arg AcquireLockParams) (sql.Result, error)
+	//ReleaseLock
+	//
+	//  UPDATE helix_locks
+	//  SET owner_id = '', expires_at = ?
+	//  WHERE domain = ?
+	//    AND lock_key = ?
+	//    AND owner_id = ?
+	ReleaseLock(ctx context.Context, arg ReleaseLockParams) (sql.Result, error)
 }
 
 var _ Querier = (*Queries)(nil)
