@@ -13,7 +13,7 @@ import (
 
 const deregisterWorker = `-- name: DeregisterWorker :exec
 UPDATE helix_workers
-SET status = 'inactive'
+SET status = 0
 WHERE domain = ?
   AND worker_id = ?
 `
@@ -26,7 +26,7 @@ type DeregisterWorkerParams struct {
 // DeregisterWorker
 //
 //	UPDATE helix_workers
-//	SET status = 'inactive'
+//	SET status = 0
 //	WHERE domain = ?
 //	  AND worker_id = ?
 func (q *Queries) DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error {
@@ -38,7 +38,7 @@ const getAllActiveWorkersByDomain = `-- name: GetAllActiveWorkersByDomain :many
 SELECT worker_id
 FROM helix_workers
 WHERE domain = ?
-  and status = 'active'
+  and status = 1
 `
 
 // GetAllActiveWorkersByDomain
@@ -46,7 +46,7 @@ WHERE domain = ?
 //	SELECT worker_id
 //	FROM helix_workers
 //	WHERE domain = ?
-//	  and status = 'active'
+//	  and status = 1
 func (q *Queries) GetAllActiveWorkersByDomain(ctx context.Context, domain string) ([]string, error) {
 	rows, err := q.query(ctx, q.getAllActiveWorkersByDomainStmt, getAllActiveWorkersByDomain, domain)
 	if err != nil {
@@ -85,7 +85,7 @@ type GetWorkerParams struct {
 type GetWorkerRow struct {
 	WorkerID        string       `json:"worker_id"`
 	Domain          string       `json:"domain"`
-	Status          string       `json:"status"`
+	Status          int8         `json:"status"`
 	CreatedAt       time.Time    `json:"created_at"`
 	LastHeartbeatAt time.Time    `json:"last_heartbeat_at"`
 	UpdatedAt       sql.NullTime `json:"updated_at"`
@@ -129,16 +129,16 @@ type GetWorkerStatusParams struct {
 //	FROM helix_workers
 //	WHERE domain = ?
 //	  AND worker_id = ?
-func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams) (string, error) {
+func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams) (int8, error) {
 	row := q.queryRow(ctx, q.getWorkerStatusStmt, getWorkerStatus, arg.Domain, arg.WorkerID)
-	var status string
+	var status int8
 	err := row.Scan(&status)
 	return status, err
 }
 
 const registerWorker = `-- name: RegisterWorker :exec
 INSERT INTO helix_workers (worker_id, domain, status, created_at, last_heartbeat_at)
-VALUES (?, ?, 'active', ?, ?)
+VALUES (?, ?, 1, ?, ?)
 `
 
 type RegisterWorkerParams struct {
@@ -151,7 +151,7 @@ type RegisterWorkerParams struct {
 // RegisterWorker
 //
 //	INSERT INTO helix_workers (worker_id, domain, status, created_at, last_heartbeat_at)
-//	VALUES (?, ?, 'active', ?, ?)
+//	VALUES (?, ?, 1, ?, ?)
 func (q *Queries) RegisterWorker(ctx context.Context, arg RegisterWorkerParams) error {
 	_, err := q.exec(ctx, q.registerWorkerStmt, registerWorker,
 		arg.WorkerID,
@@ -167,7 +167,7 @@ UPDATE helix_workers
 SET last_heartbeat_at = ?
 WHERE domain = ?
   AND worker_id = ?
-  AND status = 'active'
+  AND status = 1
 `
 
 type SendHeartbeatParams struct {
@@ -182,7 +182,7 @@ type SendHeartbeatParams struct {
 //	SET last_heartbeat_at = ?
 //	WHERE domain = ?
 //	  AND worker_id = ?
-//	  AND status = 'active'
+//	  AND status = 1
 func (q *Queries) SendHeartbeat(ctx context.Context, arg SendHeartbeatParams) (sql.Result, error) {
 	return q.exec(ctx, q.sendHeartbeatStmt, sendHeartbeat, arg.LastHeartbeatAt, arg.Domain, arg.WorkerID)
 }

@@ -56,6 +56,7 @@ type Querier interface {
 	//  SET status=0
 	//  WHERE domain = ?
 	//    and tasklist = ?
+	//    and status = 1
 	MarkPartitionInactive(ctx context.Context, arg MarkPartitionInactiveParams) error
 	//MarkPartitionUnassigned
 	//

@@ -6,6 +6,7 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
+	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	"github.com/google/uuid"
 	"log/slog"
 	"time"
@@ -65,7 +66,7 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 						if w, err := m.dataLayer.GetWorker(context.Background(), helixWorkerMysql.GetWorkerParams{
 							Domain:   m.config.Domain,
 							WorkerID: m.id,
-						}); err == nil && w.Status != "active" {
+						}); err == nil && w.Status != databaseCommon.WorkerStatusActive {
 							slog.Warn("(worker is inactive) failed to send heartbeat", "domain", m.config.Domain, "worker_id", m.id)
 							goto exit
 						}

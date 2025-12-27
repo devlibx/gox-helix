@@ -128,7 +128,7 @@ func TestWorker_Register(t *testing.T) {
 	assert.NotNil(t, workerRecord)
 	assert.Equal(t, td.worker.ID(), workerRecord.WorkerID)
 	assert.Equal(t, td.config.Domain, workerRecord.Domain)
-	assert.Equal(t, "active", workerRecord.Status)
+	assert.Equal(t, commonDb.WorkerStatusActive, workerRecord.Status)
 	assert.False(t, workerRecord.LastHeartbeatAt.IsZero())
 
 	// 6. Call Stop().
@@ -149,7 +149,7 @@ func TestWorker_Register(t *testing.T) {
 	assert.NotNil(t, workerRecord)
 	assert.Equal(t, td.worker.ID(), workerRecord.WorkerID)
 	assert.Equal(t, td.config.Domain, workerRecord.Domain)
-	assert.Equal(t, "inactive", workerRecord.Status)
+	assert.Equal(t, commonDb.WorkerStatusInactive, workerRecord.Status)
 	assert.False(t, workerRecord.LastHeartbeatAt.IsZero())
 }
 

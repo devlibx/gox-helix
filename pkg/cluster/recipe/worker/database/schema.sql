@@ -2,7 +2,7 @@ CREATE TABLE helix_workers (
     id BIGINT AUTO_INCREMENT,
     worker_id VARCHAR(64) NOT NULL,
     domain VARCHAR(64) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    status TINYINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL,
     last_heartbeat_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

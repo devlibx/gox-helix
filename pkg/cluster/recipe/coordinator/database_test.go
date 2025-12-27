@@ -60,7 +60,7 @@ func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings() {
 	s.seedPartition(ctx, domain, tasklist, "worker-A", []int{0, 1, 5}, 1) // Assigned
 	s.seedPartition(ctx, domain, tasklist, "worker-B", []int{2, 3}, 1)    // Assigned
 	s.seedPartition(ctx, domain, tasklist, "worker-C", []int{8, 9}, 0)    // Inactive - Should be ignored
-	s.seedPartition(ctx, domain, tasklist, "worker-D", []int{10}, 1)   // Assigned
+	s.seedPartition(ctx, domain, tasklist, "worker-D", []int{10}, 1)      // Assigned
 	// Seed a record with corrupted metadata
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO helix_worker_partition_mapping(domain, tasklist, owner_id, metadata, status) VALUES (?, ?, ?, ?, ?)`,
@@ -119,7 +119,7 @@ func (s *CoordinatorDataLayerTestSuite) TestPersistDistribution() {
 	// 1. Arrange: Seed an initial state
 	s.seedPartition(ctx, domain, tasklist, "worker-A", []int{0, 1, 2}, 1) // Assigned
 	s.seedPartition(ctx, domain, tasklist, "worker-B", []int{3, 4}, 1)    // Assigned
-	s.seedPartition(ctx, domain, tasklist, "worker-C", []int{5}, 0)    // Inactive
+	s.seedPartition(ctx, domain, tasklist, "worker-C", []int{5}, 0)       // Inactive
 
 	// 2. Arrange: Define the new target state
 	// Worker-A keeps 0, 1
@@ -157,7 +157,7 @@ func (s *CoordinatorDataLayerTestSuite) TestPersistDistribution() {
 	for owner := range persistedState {
 		sort.Ints(persistedState[owner])
 	}
-	
+
 	// Verify assignments for Worker-A
 	s.Contains(persistedState, "worker-A")
 	s.ElementsMatch([]int{0, 1}, persistedState["worker-A"])

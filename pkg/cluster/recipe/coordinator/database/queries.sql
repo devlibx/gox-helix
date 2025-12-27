@@ -10,7 +10,8 @@ ON DUPLICATE KEY UPDATE metadata=VALUES(metadata),
 UPDATE helix_worker_partition_mapping
 SET status=0
 WHERE domain = ?
-  and tasklist = ?;
+  and tasklist = ?
+  and status = 1;
 
 -- name: MarkPartitionAssigned :exec
 UPDATE helix_worker_partition_mapping
