@@ -72,7 +72,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResp
 	t.mutex.Lock()
 	if t.running {
 		t.mutex.Unlock()
-		slog.Info(t.logPrefix+"processor already started", "lockKey", t.lockKey)
+		slog.Info(t.logPrefix+"tasklist processor already started", "lockKey", t.lockKey)
 		return &TasklistProcessResponse{Status: "ALREADY_RUNNING"}, nil
 	}
 
@@ -83,7 +83,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResp
 
 	go t.processingLoop()
 
-	slog.Info(t.logPrefix+"processor started", "lockKey", t.lockKey, "ownerId", t.ownerId)
+	slog.Info(t.logPrefix+"tasklist processor started", "lockKey", t.lockKey, "ownerId", t.ownerId)
 	return &TasklistProcessResponse{Status: "STARTED"}, nil
 }
 
@@ -108,9 +108,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			LockKey: t.lockKey,
 			OwnerId: t.ownerId,
 		}); err != nil {
-			slog.Error(t.logPrefix+"failed to release lock on shutdown", "lockKey", t.lockKey, "err", err)
-		} else {
-			slog.Info(t.logPrefix+"lock released", "lockKey", t.lockKey)
+			slog.Error(t.logPrefix+"failed to release lock on shutdown (no issue - it will expire eventually)", "lockKey", t.lockKey, "err", err)
 		}
 	}()
 
@@ -143,7 +141,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 					slog.Error(t.logPrefix+"failed to refresh lock, suspending work", "lockKey", t.lockKey, "err", err)
 					lockHeld = false
 				} else {
-					slog.Error(t.logPrefix+"still trying to re-acquire lock", "lockKey", t.lockKey, "err", err)
+					slog.Error(t.logPrefix+"still trying to re-acquire lock, work is still suspended", "lockKey", t.lockKey, "err", err)
 				}
 			} else {
 				if !lockHeld {
@@ -153,7 +151,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			}
 
 		case <-t.stopChan:
-			slog.Info(t.logPrefix+"internal stop signal received, stopping processor", "lockKey", t.lockKey)
+			slog.Info(t.logPrefix+"internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
 			return
 		}
 	}
@@ -165,7 +163,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 		// If we found that we already stopped then not need to continue
 		select {
 		case <-t.stopChan:
-			slog.Info(t.logPrefix + "stop signal received before lock acquisition, stopping processor")
+			slog.Info(t.logPrefix + "stop signal received before lock initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
 		default:
 		}
@@ -177,17 +175,16 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 			OwnerId: t.ownerId,
 			TTL:     t.config.LockTTL,
 		}); err == nil {
-			slog.Info(t.logPrefix+"initial lock acquired", "lockKey", t.lockKey)
 			return true
 		} else {
-			slog.Error(t.logPrefix+"failed to acquire initial lock, will retry...", "err", err)
+			slog.Error(t.logPrefix+"failed to acquire initial lock for tasklist processor, will retry...", "err", err)
 		}
 
 		// Retry loc but also stop if we found we are stopped in middle
 		select {
 		case <-time.After(t.config.LockAcquireRefreshInterval):
 		case <-t.stopChan:
-			slog.Info(t.logPrefix + "stop signal received while waiting to retry, stopping processor")
+			slog.Info(t.logPrefix + "stop signal received while waiting to retry to take initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
 		}
 	}
@@ -198,7 +195,7 @@ func (t *tasklistProcessorImpl) Stop(ctx context.Context) error {
 	t.mutex.Lock()
 	if !t.running {
 		t.mutex.Unlock()
-		slog.Info(t.logPrefix+"processor not running, nothing to stop", "lockKey", t.lockKey)
+		slog.Info(t.logPrefix+"tasklist processor not running, nothing to stop", "lockKey", t.lockKey)
 		return nil
 	}
 
@@ -208,6 +205,6 @@ func (t *tasklistProcessorImpl) Stop(ctx context.Context) error {
 
 	t.wg.Wait()
 
-	slog.Info(t.logPrefix+"processor stopped", "lockKey", t.lockKey)
+	slog.Info(t.logPrefix+"tasklist processor stopped", "lockKey", t.lockKey)
 	return nil
 }
