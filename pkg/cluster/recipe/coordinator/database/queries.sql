@@ -34,7 +34,7 @@ FROM helix_worker_partition_mapping
 WHERE domain = ?
   AND tasklist = ?;
 
--- name: GetValidPartitionByOwnerId :one
+-- name: GetValidPartitionByOwnerId :many
 SELECT /*+ MAX_EXECUTION_TIME(1000) */
     *
 FROM helix_worker_partition_mapping

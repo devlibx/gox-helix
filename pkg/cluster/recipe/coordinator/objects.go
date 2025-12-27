@@ -19,6 +19,7 @@ type WorkerPartitionMapping struct {
 type PartitionService interface {
 	GetActivePartitionMappings(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error)
 	PersistDistribution(ctx context.Context, domain string, tasklist string, response *DistributionResponse) error
+	GetValidPartitionByOwnerId(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error)
 }
 
 type DomainService interface {

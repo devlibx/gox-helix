@@ -6,19 +6,24 @@ import (
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	helixDomainMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/domain/database"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	"github.com/google/uuid"
+	"log/slog"
+	"sort"
+	"time"
 )
 
 type WorkerHelper struct {
 	gox.CrossFunction
-	workerDataLayer *worker.DataLayer
-	domainDataLayer *domain.DataLayer
-	nodeId          string
+	workerDataLayer  *worker.DataLayer
+	domainDataLayer  *domain.DataLayer
+	partitionService coordinator.PartitionService
+	nodeId           string
 }
 
 func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
@@ -40,9 +45,12 @@ func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
 		}
 	}
 
+	workerIds := make([]string, 0)
 	for i := 0; i < domain.WorkerCountToProcessDomain; i++ {
+		wid := fmt.Sprintf("worker-%d-%s", i, w.nodeId)
+		workerIds = append(workerIds, wid)
 		if err := w.workerDataLayer.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
-			WorkerID:        fmt.Sprintf("worker-%d-%s", i, w.nodeId),
+			WorkerID:        wid,
 			Domain:          domain.Name,
 			CreatedAt:       w.Now(),
 			LastHeartbeatAt: w.Now(),
@@ -51,6 +59,31 @@ func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
 		}
 	}
 
+	go func() {
+		for {
+			for tasklistName, _ := range domain.TaskLists {
+				for _, workerId := range workerIds {
+					go func() {
+						if result, err := w.partitionService.GetValidPartitionByOwnerId(ctx, domain.Name, tasklistName); err == nil {
+							for _, r := range result {
+								if r.OwnerID == workerId && tasklistName == "driver_pickup" {
+									p := make([]int, 0)
+									for k, _ := range r.Mapping {
+										p = append(p, k)
+									}
+									sort.Ints(p)
+									slog.Info("these are the worker", "domain", domain.Name, "tasklist", tasklistName, "workerId", workerId, "partitions", p)
+								}
+							}
+						}
+					}()
+				}
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+	}()
+
 	return nil
 }
 
@@ -58,11 +91,13 @@ func NewWorkerHelper(
 	cf gox.CrossFunction,
 	workerDataLayer *worker.DataLayer,
 	domainDataLayer *domain.DataLayer,
+	partitionService coordinator.PartitionService,
 ) *WorkerHelper {
 	return &WorkerHelper{
-		CrossFunction:   cf,
-		workerDataLayer: workerDataLayer,
-		domainDataLayer: domainDataLayer,
-		nodeId:          uuid.New().String(),
+		CrossFunction:    cf,
+		workerDataLayer:  workerDataLayer,
+		domainDataLayer:  domainDataLayer,
+		partitionService: partitionService,
+		nodeId:           uuid.New().String(),
 	}
 }

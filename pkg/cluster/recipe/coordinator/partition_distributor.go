@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/devlibx/gox-base/v2/errors"
@@ -33,7 +34,7 @@ func NewPartitionDistributionService(
 }
 
 func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request DistributionRequest) error {
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(time.Second * 1)
 	defer ticker.Stop()
 
 	slog.Info("partition distributor process started", "domain", request.DomainName, "tasklist", request.TaskList)
@@ -58,6 +59,10 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 			} else {
 				slog.Debug("(expected - not all nodes will get lock) lock not acquired for partition distributor", "domain", request.DomainName, "tasklist", request.TaskList)
 			}
+
+			// Reset tick after 5-10 sec
+			delay := randomDelay(5*time.Second, 10*time.Second)
+			ticker.Reset(delay)
 		}
 	}
 
@@ -80,4 +85,8 @@ func (p *PartitionDistributionServiceImpl) internalProcess(ctx context.Context, 
 
 	slog.Debug("successfully completed partition distribution cycle", "domain", request.DomainName, "tasklist", request.TaskList)
 	return nil
+}
+
+func randomDelay(min, max time.Duration) time.Duration {
+	return min + time.Duration(rand.Int63n(int64(max-min)))
 }

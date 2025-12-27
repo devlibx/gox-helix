@@ -42,7 +42,7 @@ type Querier interface {
 	//  WHERE domain = ?
 	//    AND tasklist = ?
 	//    AND status in (1, 2)
-	GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPartitionByOwnerIdParams) (*HelixWorkerPartitionMapping, error)
+	GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPartitionByOwnerIdParams) ([]*HelixWorkerPartitionMapping, error)
 	//MarkPartitionAssigned
 	//
 	//  UPDATE helix_worker_partition_mapping

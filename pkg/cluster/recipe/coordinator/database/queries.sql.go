@@ -152,7 +152,7 @@ func (q *Queries) GetPartitionByOwnerId(ctx context.Context, arg GetPartitionByO
 	return &i, err
 }
 
-const getValidPartitionByOwnerId = `-- name: GetValidPartitionByOwnerId :one
+const getValidPartitionByOwnerId = `-- name: GetValidPartitionByOwnerId :many
 SELECT /*+ MAX_EXECUTION_TIME(1000) */
     id, domain, tasklist, owner_id, status, metadata, created_at, updated_at
 FROM helix_worker_partition_mapping
@@ -174,20 +174,36 @@ type GetValidPartitionByOwnerIdParams struct {
 //	WHERE domain = ?
 //	  AND tasklist = ?
 //	  AND status in (1, 2)
-func (q *Queries) GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPartitionByOwnerIdParams) (*HelixWorkerPartitionMapping, error) {
-	row := q.queryRow(ctx, q.getValidPartitionByOwnerIdStmt, getValidPartitionByOwnerId, arg.Domain, arg.Tasklist)
-	var i HelixWorkerPartitionMapping
-	err := row.Scan(
-		&i.ID,
-		&i.Domain,
-		&i.Tasklist,
-		&i.OwnerID,
-		&i.Status,
-		&i.Metadata,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return &i, err
+func (q *Queries) GetValidPartitionByOwnerId(ctx context.Context, arg GetValidPartitionByOwnerIdParams) ([]*HelixWorkerPartitionMapping, error) {
+	rows, err := q.query(ctx, q.getValidPartitionByOwnerIdStmt, getValidPartitionByOwnerId, arg.Domain, arg.Tasklist)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*HelixWorkerPartitionMapping{}
+	for rows.Next() {
+		var i HelixWorkerPartitionMapping
+		if err := rows.Scan(
+			&i.ID,
+			&i.Domain,
+			&i.Tasklist,
+			&i.OwnerID,
+			&i.Status,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markPartitionAssigned = `-- name: MarkPartitionAssigned :exec

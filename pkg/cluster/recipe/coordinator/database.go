@@ -152,3 +152,32 @@ func (d *DataLayer) internalPersistDistribution(ctx context.Context, domain stri
 
 	return err
 }
+
+func (d *DataLayer) GetValidPartitionByOwnerId(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error) {
+	result, err := d.Queries.GetValidPartitionByOwnerId(ctx, helixCoordinatorMysql.GetValidPartitionByOwnerIdParams{
+		Domain:   domain,
+		Tasklist: tasklist,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	m := make([]WorkerPartitionMapping, 0)
+	for _, r := range result {
+		var partitions []int
+		if err := json.Unmarshal([]byte(r.Metadata.String), &partitions); err == nil {
+			t := map[int]DistributionMapping{}
+			for _, partition := range partitions {
+				t[partition] = DistributionMapping{
+					OwnerId: r.OwnerID,
+					Status:  databaseCommon.PartitionAssignmentStatus(r.Status),
+				}
+			}
+			m = append(m, WorkerPartitionMapping{
+				OwnerID: r.OwnerID,
+				Mapping: t,
+			})
+		}
+	}
+	return m, nil
+}

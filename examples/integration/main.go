@@ -100,5 +100,5 @@ func main() {
 			}(domainObj, tl)
 		}
 	}
-	time.Sleep(11 * time.Second)
+	time.Sleep(11 * time.Minute)
 }
