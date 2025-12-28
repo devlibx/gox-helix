@@ -1,4 +1,4 @@
-package processor
+package coordinator
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-//go:generate mockgen -source=api.go -destination=mocks.go -package=processor
+//go:generate mockgen -source=processor_api.go -destination=processor_mocks.go -package=coordinator
 
 type DomainTasklistProcessRequest struct {
 	Partitions []int `json:"partitions"`

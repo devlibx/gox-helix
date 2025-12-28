@@ -17,7 +17,7 @@ type CreateDomainTasklistProcessorRequest struct {
 }
 
 type Factory interface {
-	GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (DomainTasklistProcessor, error)
+	GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (coordinator.DomainTasklistProcessor, error)
 
 	Stop(ctx context.Context) error
 }
@@ -27,11 +27,11 @@ type factoryImpl struct {
 	stopSignal                    *common.ApplicationStopSignal
 	lockService                   locker.Locker
 	partitionService              coordinator.PartitionService
-	DomainTasklistProcessors      map[string]DomainTasklistProcessor
+	DomainTasklistProcessors      map[string]coordinator.DomainTasklistProcessor
 	DomainTasklistProcessorsMutex *sync.Mutex
 }
 
-func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (DomainTasklistProcessor, error) {
+func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (coordinator.DomainTasklistProcessor, error) {
 	f.DomainTasklistProcessorsMutex.Lock()
 	defer f.DomainTasklistProcessorsMutex.Unlock()
 
@@ -71,7 +71,7 @@ func NewProcessorFactory(
 		stopSignal:                    stopSignal,
 		lockService:                   lockService,
 		partitionService:              partitionService,
-		DomainTasklistProcessors:      map[string]DomainTasklistProcessor{},
+		DomainTasklistProcessors:      map[string]coordinator.DomainTasklistProcessor{},
 		DomainTasklistProcessorsMutex: &sync.Mutex{},
 	}
 

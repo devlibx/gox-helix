@@ -15,10 +15,10 @@ type domainTasklistProcessorImpl struct {
 	config                *DomainTasklistProcessorCfg // Only the config, not the full dependencies
 	activePartitions      []int
 	activePartitionsMutex *sync.Mutex
-	tasklistProcessor     map[int]TasklistProcessor
+	tasklistProcessor     map[int]coordinator.TasklistProcessor
 }
 
-func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request DomainTasklistProcessRequest) (*DomainTasklistProcessResponse, error) {
+func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coordinator.DomainTasklistProcessRequest) (*coordinator.DomainTasklistProcessResponse, error) {
 	d.activePartitionsMutex.Lock()
 	defer d.activePartitionsMutex.Unlock()
 
@@ -55,7 +55,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 		if _, ok := d.tasklistProcessor[task]; !ok {
 			d.tasklistProcessor[task] = NewTasklistProcessor(
 				d.CrossFunction,
-				NewDefaultTasklistProcessorConfig(),
+				coordinator.NewDefaultTasklistProcessorConfig(),
 				d.lockService,
 				d.partitionService,
 				&ProcessTasklistRequest{
@@ -70,7 +70,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 		_, _ = d.tasklistProcessor[task].Start(context.Background())
 	}
 
-	return &DomainTasklistProcessResponse{}, nil
+	return &coordinator.DomainTasklistProcessResponse{}, nil
 }
 
 func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
@@ -93,14 +93,14 @@ func NewDomainTasklistProcessor(
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 	cfg *DomainTasklistProcessorCfg,
-) DomainTasklistProcessor {
+) coordinator.DomainTasklistProcessor {
 	p := &domainTasklistProcessorImpl{
 		CrossFunction:         cf,
 		lockService:           lockService,
 		partitionService:      partitionService,
 		config:                cfg,
 		activePartitions:      make([]int, 0),
-		tasklistProcessor:     make(map[int]TasklistProcessor),
+		tasklistProcessor:     make(map[int]coordinator.TasklistProcessor),
 		activePartitionsMutex: &sync.Mutex{},
 	}
 	return p

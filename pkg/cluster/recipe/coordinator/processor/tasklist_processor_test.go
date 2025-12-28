@@ -22,13 +22,13 @@ func TestMain(m *testing.M) {
 
 type testProcessorDeps struct {
 	cf                   gox.CrossFunction
-	config               *TasklistProcessorConfig
+	config               *coordinator.TasklistProcessorConfig
 	mockCtrl             *gomock.Controller
 	mockLocker           *locker.MockLocker
 	mockPartitionService *coordinator.MockPartitionService // Use PartitionService mock
 	stopSignal           *common.ApplicationStopSignal
-	processor            TasklistProcessor
-	workChannel          chan *Work
+	processor            coordinator.TasklistProcessor
+	workChannel          chan *coordinator.Work
 }
 
 func setupTest(t *testing.T) *testProcessorDeps {
@@ -37,8 +37,8 @@ func setupTest(t *testing.T) *testProcessorDeps {
 	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
 	stopCtx, cancel := context.WithCancel(context.Background())
 	stopSignal := &common.ApplicationStopSignal{Ctx: stopCtx}
-	config := NewDefaultTasklistProcessorConfig()
-	workChannel := make(chan *Work)
+	config := coordinator.NewDefaultTasklistProcessorConfig()
+	workChannel := make(chan *coordinator.Work)
 
 	p := NewTasklistProcessor(
 		gox.NewCrossFunction(),
@@ -131,8 +131,8 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockLocker := locker.NewMockLocker(mockCtrl)
 	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
-	config := NewDefaultTasklistProcessorConfig()
-	workChannel := make(chan *Work)
+	config := coordinator.NewDefaultTasklistProcessorConfig()
+	workChannel := make(chan *coordinator.Work)
 
 	processor := NewTasklistProcessor(
 		gox.NewCrossFunction(),

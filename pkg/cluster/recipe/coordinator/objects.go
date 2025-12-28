@@ -6,7 +6,6 @@ import (
 )
 
 //go:generate mockgen -source=objects.go -destination=mocks.go -package=coordinator
-
 type WorkerService interface {
 	GetActiveWorkers(ctx context.Context, domain string) ([]string, error)
 }

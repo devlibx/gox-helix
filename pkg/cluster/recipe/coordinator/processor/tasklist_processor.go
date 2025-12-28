@@ -22,10 +22,10 @@ type ProcessTasklistRequest struct {
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
 type tasklistProcessorImpl struct {
 	gox.CrossFunction
-	config           *TasklistProcessorConfig
+	config           *coordinator.TasklistProcessorConfig
 	lockService      locker.Locker
 	partitionService coordinator.PartitionService
-	workChannel      chan<- *Work
+	workChannel      chan<- *coordinator.Work
 
 	domain    string
 	tasklist  string
@@ -44,12 +44,12 @@ type tasklistProcessorImpl struct {
 // It also starts a background goroutine to listen for the application-wide stop signal.
 func NewTasklistProcessor(
 	cf gox.CrossFunction,
-	config *TasklistProcessorConfig,
+	config *coordinator.TasklistProcessorConfig,
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 	request *ProcessTasklistRequest,
-	workChannel chan<- *Work,
-) TasklistProcessor {
+	workChannel chan<- *coordinator.Work,
+) coordinator.TasklistProcessor {
 	p := &tasklistProcessorImpl{
 		CrossFunction:    cf,
 		config:           config,
@@ -68,12 +68,12 @@ func NewTasklistProcessor(
 }
 
 // Start begins the processor's execution loop.
-func (t *tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResponse, error) {
+func (t *tasklistProcessorImpl) Start(ctx context.Context) (*coordinator.TasklistProcessResponse, error) {
 	t.mutex.Lock()
 	if t.running {
 		t.mutex.Unlock()
 		slog.Info(t.logPrefix+"tasklist processor already started", "lockKey", t.lockKey)
-		return &TasklistProcessResponse{Status: "ALREADY_RUNNING"}, nil
+		return &coordinator.TasklistProcessResponse{Status: "ALREADY_RUNNING"}, nil
 	}
 
 	t.running = true
@@ -84,7 +84,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*TasklistProcessResp
 	go t.processingLoop()
 
 	slog.Info(t.logPrefix+"tasklist processor started", "lockKey", t.lockKey, "ownerId", t.ownerId)
-	return &TasklistProcessResponse{Status: "STARTED"}, nil
+	return &coordinator.TasklistProcessResponse{Status: "STARTED"}, nil
 }
 
 // processingLoop is the main background routine that acquires a lock and performs work.
@@ -157,8 +157,8 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 		default:
 			if lockHeld {
-				respChannel := make(chan *WorkResponse)
-				t.workChannel <- &Work{
+				respChannel := make(chan *coordinator.WorkResponse)
+				t.workChannel <- &coordinator.Work{
 					Domain:           t.domain,
 					Tasklist:         t.tasklist,
 					WorkerId:         t.ownerId,
