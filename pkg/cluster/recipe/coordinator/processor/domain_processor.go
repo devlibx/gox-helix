@@ -4,13 +4,11 @@ import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
-	"github.com/devlibx/gox-helix/pkg/common"
 	"sync"
 )
 
 type domainTasklistProcessorImpl struct {
 	gox.CrossFunction
-	stopSignal            *common.ApplicationStopSignal
 	lockService           locker.Locker
 	domain                string
 	tasklist              string
@@ -53,7 +51,6 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 				d.CrossFunction,
 				NewDefaultTasklistProcessorConfig(),
 				d.lockService,
-				d.stopSignal,
 				d.domain,
 				d.tasklist,
 				task,
@@ -76,14 +73,12 @@ func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
 
 func NewDomainTasklistProcessor(
 	cf gox.CrossFunction,
-	stopSignal *common.ApplicationStopSignal,
 	lockService locker.Locker,
 	domain string,
 	tasklist string,
 ) DomainTasklistProcessor {
 	p := &domainTasklistProcessorImpl{
 		CrossFunction:         cf,
-		stopSignal:            stopSignal,
 		lockService:           lockService,
 		domain:                domain,
 		tasklist:              tasklist,

@@ -9,16 +9,15 @@ import (
 
 	"github.com/devlibx/gox-base/v2"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
-	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/google/uuid"
 )
 
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
 type tasklistProcessorImpl struct {
 	gox.CrossFunction
-	config       *TasklistProcessorConfig
-	lockService  locker.Locker
-	stopSignal   *common.ApplicationStopSignal
+	config      *TasklistProcessorConfig
+	lockService locker.Locker
+
 	domain       string
 	tasklist     string
 	partition    int
@@ -39,7 +38,6 @@ func NewTasklistProcessor(
 	cf gox.CrossFunction,
 	config *TasklistProcessorConfig,
 	lockService locker.Locker,
-	stopSignal *common.ApplicationStopSignal,
 	domain string,
 	tasklist string,
 	partition int,
@@ -48,7 +46,6 @@ func NewTasklistProcessor(
 		CrossFunction: cf,
 		config:        config,
 		lockService:   lockService,
-		stopSignal:    stopSignal,
 		domain:        domain,
 		tasklist:      tasklist,
 		partition:     partition,
@@ -56,13 +53,6 @@ func NewTasklistProcessor(
 		ownerId:       uuid.NewString(),
 		logPrefix:     fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d - tasklist_processor] ", domain, tasklist, partition),
 	}
-
-	// Start a listener that will stop this processor when the application-wide signal is fired.
-	go func() {
-		<-p.stopSignal.Ctx.Done()
-		slog.Info(p.logPrefix+"application stop signal received, stopping processor", "lockKey", p.lockKey, "ownerId", p.ownerId)
-		_ = p.Stop(context.Background())
-	}()
 
 	return p
 }

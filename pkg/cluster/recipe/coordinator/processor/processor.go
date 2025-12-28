@@ -31,7 +31,6 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, do
 	if _, ok := f.DomainTasklistProcessors[key]; !ok {
 		f.DomainTasklistProcessors[key] = NewDomainTasklistProcessor(
 			f.CrossFunction,
-			f.stopSignal,
 			f.lockService,
 			domain,
 			taskList,

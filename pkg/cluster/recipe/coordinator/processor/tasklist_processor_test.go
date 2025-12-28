@@ -39,7 +39,6 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		gox.NewCrossFunction(),
 		config,
 		mockLocker,
-		stopSignal,
 		"test-domain",
 		"test-tasklist",
 		1,
@@ -103,16 +102,12 @@ func TestStop_GracefulShutdown(t *testing.T) {
 func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockLocker := locker.NewMockLocker(mockCtrl)
-	stopCtx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel) // Ensure cancel is called after the test
-	stopSignal := &common.ApplicationStopSignal{Ctx: stopCtx}
 	config := NewDefaultTasklistProcessorConfig()
 
 	processor := NewTasklistProcessor(
 		gox.NewCrossFunction(),
 		config,
 		mockLocker,
-		stopSignal,
 		"test-domain",
 		"test-tasklist",
 		1,
@@ -127,7 +122,7 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Trigger the application-wide stop signal
-	cancel()
+	_ = processor.Stop(context.Background())
 
 	var isRunning bool
 	p := processor.(*tasklistProcessorImpl)
