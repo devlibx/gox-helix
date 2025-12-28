@@ -111,8 +111,6 @@ func (t *tasklistProcessorImpl) processingLoop() {
 		}
 	}()
 
-	workTicker := time.NewTicker(t.config.WorkInterval)
-	defer workTicker.Stop()
 	refreshTicker := time.NewTicker(t.config.LockAcquireRefreshInterval)
 	defer refreshTicker.Stop()
 	ownershipTicker := time.NewTicker(time.Second)
@@ -121,16 +119,6 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	lockHeld := true
 	for {
 		select {
-		case <-workTicker.C:
-			if lockHeld {
-				slog.Info(t.logPrefix + "...processing...")
-				if t.workCallback != nil {
-					t.workCallback()
-				}
-			} else {
-				slog.Info(t.logPrefix + "...suspended (lock not held)...")
-			}
-
 		case <-refreshTicker.C:
 			// We must hold the lock so we refresh it periodically to make sure we have the lock
 			if _, err := t.lockService.AcquireLock(context.Background(), locker.AcquireLockRequest{
@@ -163,6 +151,15 @@ func (t *tasklistProcessorImpl) processingLoop() {
 		case <-t.stopChan:
 			slog.Info(t.logPrefix+"internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
 			return
+
+		default:
+			if lockHeld {
+				t.workCallback()
+			} else {
+				time.Sleep(10 * time.Millisecond)
+			}
+			// Small sleep to prevent tight loop even when working
+			time.Sleep(1 * time.Millisecond)
 		}
 	}
 }

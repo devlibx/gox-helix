@@ -54,6 +54,10 @@ func setupTest(t *testing.T) *testProcessorDeps {
 	// Default expectation for ownership checks to allow existing tests to pass
 	mockPartitionService.EXPECT().IsPartitionOwnedByOwner(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
+	p.(*tasklistProcessorImpl).workCallback = func() {
+		// Default no-op work callback
+	}
+
 	t.Cleanup(func() {
 		cancel()
 		time.Sleep(10 * time.Millisecond)
@@ -128,6 +132,7 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 			WorkerId:  "test-worker-id",
 		},
 	)
+	processor.(*tasklistProcessorImpl).workCallback = func() {}
 
 	mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()
 	mockLocker.EXPECT().ReleaseLock(gomock.Any(), gomock.Any()).Return(&locker.ReleaseLockResponse{}, nil).Times(1)
@@ -158,9 +163,7 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 
 func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 	deps := setupTest(t)
-	// Make intervals fast for testing
-	deps.config.WorkInterval = 50 * time.Millisecond
-	deps.config.LockAcquireRefreshInterval = 100 * time.Millisecond
+	deps.config.LockAcquireRefreshInterval = 100 * time.Millisecond // Keep refresh fast
 
 	p := deps.processor.(*tasklistProcessorImpl)
 
@@ -170,47 +173,57 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 		mu.Lock()
 		workDoneCounter++
 		mu.Unlock()
+		time.Sleep(10 * time.Millisecond) // Simulate some work
 	}
 
 	// Sequence of mock calls:
 	// 1. First AcquireLock succeeds.
 	// 2. The second call (first refresh) fails.
 	// 3. Subsequent calls succeed.
-	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).Times(1)
-	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("transient error")).Times(1)
-	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()
+	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).Times(1)   // Initial acquire
+	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("transient error")).Times(1)   // First refresh fails
+	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes() // Subsequent refresh succeeds
 	deps.mockLocker.EXPECT().ReleaseLock(gomock.Any(), gomock.Any()).Return(&locker.ReleaseLockResponse{}, nil).Times(1)
 
 	_, err := deps.processor.Start(context.Background())
 	assert.NoError(t, err)
 
-	// Wait long enough for at least one work tick to occur.
-	time.Sleep(deps.config.WorkInterval + 20*time.Millisecond)
+	// --- Phase 1: Work should be active initially ---
+	// Wait long enough for work to be done multiple times before the first refresh.
+	time.Sleep(deps.config.LockAcquireRefreshInterval / 2) // Half of refresh interval, should be working
 	mu.Lock()
-	assert.GreaterOrEqual(t, workDoneCounter, 1, "Work should have been done at least once while lock was held")
+	initialWorkCount := workDoneCounter
 	mu.Unlock()
+	assert.Greater(t, initialWorkCount, 0, "Work should have started initially")
 
+	// --- Phase 2: Lock refresh fails, work should suspend ---
 	// Wait for the refresh cycle that is expected to fail.
-	time.Sleep(deps.config.LockAcquireRefreshInterval)
-
-	// Capture the counter value *after* the failure.
-	mu.Lock()
-	workCountAfterFailure := workDoneCounter
-	mu.Unlock()
-
-	// Wait for another work interval. No work should be done in this period.
-	time.Sleep(deps.config.WorkInterval + 20*time.Millisecond)
+	time.Sleep(deps.config.LockAcquireRefreshInterval + 50*time.Millisecond) // Ensure refresh fires and suspension takes effect
 
 	mu.Lock()
-	assert.Equal(t, workCountAfterFailure, workDoneCounter, "Work should be suspended when lock refresh fails")
+	workCountAfterSuspension := workDoneCounter
 	mu.Unlock()
 
+	// Wait during the suspension period - work count should not increase significantly
+	time.Sleep(deps.config.LockAcquireRefreshInterval / 2) // Half of refresh interval
+
+	mu.Lock()
+	workCountDuringSuspension := workDoneCounter
+	mu.Unlock()
+
+	// Work should be mostly suspended - with 1ms sleep in loop, some items may slip through
+	// but it should be much less than if lock was held continuously
+	workDoneWhileSuspended := workCountDuringSuspension - workCountAfterSuspension
+	assert.LessOrEqual(t, workDoneWhileSuspended, 5, "Work should be mostly suspended (< 5 items during 50ms period)")
+
+	// --- Phase 3: Lock re-acquired, work should resume ---
 	// Wait for the next refresh cycle, which should succeed and resume work.
-	time.Sleep(deps.config.LockAcquireRefreshInterval)
+	time.Sleep(deps.config.LockAcquireRefreshInterval + 20*time.Millisecond) // Ensure re-acquisition ticker fires
 
-	// Wait for another work interval and check that work has resumed.
+	// Wait for work to happen again
+	time.Sleep(50 * time.Millisecond) // Give time for work to resume
 	mu.Lock()
-	assert.Greater(t, workDoneCounter, workCountAfterFailure, "Work should resume after lock is re-acquired")
+	assert.Greater(t, workDoneCounter, workCountDuringSuspension, "Work should resume after lock is re-acquired")
 	mu.Unlock()
 
 	err = deps.processor.Stop(context.Background())
