@@ -8,12 +8,14 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/serialization"
 	helix "github.com/devlibx/gox-helix"
+	"github.com/devlibx/gox-helix/internal/common"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/executor"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
-	"github.com/devlibx/gox-helix/pkg/common"
+	common2 "github.com/devlibx/gox-helix/pkg/common"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
@@ -35,11 +37,14 @@ func main() {
 	appConfig.SetDefaults()
 	fmt.Printf("%+v\n", appConfig)
 
+	appSignal := &common2.ApplicationStopSignal{Ctx: context.Background()}
+
 	appCtx := &common.ApplicationCtx{}
 	app := fx.New(
 
 		fx.Supply(&appConfig),
 		fx.Supply(&appConfig.Domains),
+		fx.Supply(appSignal),
 
 		fx.Provide(gox.NewCrossFunction),
 		fx.Provide(func() (*sql.DB, error) {
@@ -47,20 +52,11 @@ func main() {
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
-		// All setup for this framework
-		fx.Provide(domain.NewService),
-		fx.Provide(coordinator.NewPartitionDistributionService),
-		fx.Provide(func(cf gox.CrossFunction, ws coordinator.WorkerService, ps coordinator.PartitionService, ds coordinator.DomainService) (coordinator.DistributorStrategy, error) {
-			return coordinator.NewDistributorStrategy(cf, ws, ps, ds)
-		}),
-		fx.Provide(locker.NewLockerDataLayer),           // Locker data layer
-		fx.Provide(locker.NewLocker),                    // Locker
-		fx.Provide(coordinator.NewCoordinatorDataLayer), // Coordinator
-		fx.Provide(worker.NewWorkerDataLayer),           // Worker
-		fx.Provide(domain.NewDomainDataLayer),           // Domain
-		fx.Provide(func(dataLayer *coordinator.DataLayer) coordinator.PartitionService { return dataLayer }),
-		fx.Provide(func(dataLayer *worker.DataLayer) coordinator.WorkerService { return dataLayer }),
-		fx.Provide(func(dataLayer *domain.DataLayer) coordinator.DomainService { return dataLayer }),
+		processor.Provider,
+		locker.Provider,
+		coordinator.Provider,
+		domain.Provider,
+		worker.Provider,
 
 		fx.Provide(executor.NewExecutor),
 		fx.Invoke(NewCleanupOnBootupProvider),
@@ -71,6 +67,8 @@ func main() {
 			&appCtx.WorkerDataLayer,
 			&appCtx.ConnectionHolder,
 			&appCtx.PartitionDistributionService,
+			&appCtx.ProcessorFactory,
+			&appCtx.ExecutorService,
 		),
 	)
 	err = app.Start(context.Background())
@@ -78,6 +76,18 @@ func main() {
 		panic(err)
 	}
 
+	for _, domainObj := range appConfig.Domains {
+		for _, tl := range domainObj.TaskLists {
+			_, _ = appCtx.ProcessorFactory.GetOrCreateDomainTasklistProcessor(
+				context.Background(),
+				processor.CreateDomainTasklistProcessorRequest{
+					Domain:   domainObj.Name,
+					TaskList: tl.Name,
+					WorkerId: appCtx.ExecutorService.GetWorkerId(),
+				},
+			)
+		}
+	}
 	/*for _, domainObj := range appConfig.Domains {
 		for _, tl := range domainObj.TaskLists {
 			go func(d *config.Domain, tl *config.TaskList) {
