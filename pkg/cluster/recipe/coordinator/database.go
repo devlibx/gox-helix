@@ -180,3 +180,16 @@ func (d *DataLayer) GetValidPartitionByOwnerId(ctx context.Context, domain strin
 	}
 	return out, nil
 }
+
+func (d *DataLayer) IsPartitionOwnedByOwner(ctx context.Context, domain string, tasklist string, ownerId string, partition int) (bool, error) {
+	mapping, err := d.GetValidPartitionByOwnerId(ctx, domain, tasklist, ownerId)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check if partition is owned by owner: domain=%s, tasklist=%s, partition=%d", domain, tasklist, partition)
+	}
+	if p, ok := mapping.Mapping[partition]; ok {
+		if p.Status == databaseCommon.PartitionAssignmentStatusAssigned {
+			return true, nil
+		}
+	}
+	return false, nil
+}

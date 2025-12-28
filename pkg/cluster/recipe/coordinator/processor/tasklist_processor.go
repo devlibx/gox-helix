@@ -9,8 +9,14 @@ import (
 
 	"github.com/devlibx/gox-base/v2"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
-	"github.com/google/uuid"
 )
+
+type ProcessTasklistRequest struct {
+	Domain    string
+	TaskList  string
+	Partition int
+	WorkerId  string
+}
 
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
 type tasklistProcessorImpl struct {
@@ -38,20 +44,18 @@ func NewTasklistProcessor(
 	cf gox.CrossFunction,
 	config *TasklistProcessorConfig,
 	lockService locker.Locker,
-	domain string,
-	tasklist string,
-	partition int,
+	request *ProcessTasklistRequest,
 ) TasklistProcessor {
 	p := &tasklistProcessorImpl{
 		CrossFunction: cf,
 		config:        config,
 		lockService:   lockService,
-		domain:        domain,
-		tasklist:      tasklist,
-		partition:     partition,
-		lockKey:       fmt.Sprintf("%s--%s--partition-%d", domain, tasklist, partition),
-		ownerId:       uuid.NewString(),
-		logPrefix:     fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d - tasklist_processor] ", domain, tasklist, partition),
+		domain:        request.Domain,
+		tasklist:      request.TaskList,
+		partition:     request.Partition,
+		lockKey:       fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
+		ownerId:       request.WorkerId,
+		logPrefix:     fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d - tasklist_processor] ", request.Domain, request.TaskList, request.Partition),
 	}
 
 	return p

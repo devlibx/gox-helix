@@ -10,8 +10,7 @@ import (
 type domainTasklistProcessorImpl struct {
 	gox.CrossFunction
 	lockService           locker.Locker
-	domain                string
-	tasklist              string
+	config                *DomainTasklistProcessorCfg // Only the config, not the full dependencies
 	activePartitions      []int
 	activePartitionsMutex *sync.Mutex
 	tasklistProcessor     map[int]TasklistProcessor
@@ -51,9 +50,12 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 				d.CrossFunction,
 				NewDefaultTasklistProcessorConfig(),
 				d.lockService,
-				d.domain,
-				d.tasklist,
-				task,
+				&ProcessTasklistRequest{
+					Domain:    d.config.Domain,
+					TaskList:  d.config.TaskList,
+					Partition: task,
+					WorkerId:  d.config.WorkerId,
+				},
 			)
 		}
 		_, _ = d.tasklistProcessor[task].Start(context.Background())
@@ -71,17 +73,21 @@ func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
 	return nil
 }
 
+type DomainTasklistProcessorCfg struct {
+	Domain   string
+	TaskList string
+	WorkerId string
+}
+
 func NewDomainTasklistProcessor(
 	cf gox.CrossFunction,
 	lockService locker.Locker,
-	domain string,
-	tasklist string,
+	cfg *DomainTasklistProcessorCfg,
 ) DomainTasklistProcessor {
 	p := &domainTasklistProcessorImpl{
 		CrossFunction:         cf,
 		lockService:           lockService,
-		domain:                domain,
-		tasklist:              tasklist,
+		config:                cfg,
 		activePartitions:      make([]int, 0),
 		tasklistProcessor:     make(map[int]TasklistProcessor),
 		activePartitionsMutex: &sync.Mutex{},

@@ -39,9 +39,12 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		gox.NewCrossFunction(),
 		config,
 		mockLocker,
-		"test-domain",
-		"test-tasklist",
-		1,
+		&ProcessTasklistRequest{
+			Domain:    "test-domain",
+			TaskList:  "test-tasklist",
+			Partition: 1,
+			WorkerId:  "test-worker-id",
+		},
 	)
 
 	t.Cleanup(func() {
@@ -108,9 +111,12 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 		gox.NewCrossFunction(),
 		config,
 		mockLocker,
-		"test-domain",
-		"test-tasklist",
-		1,
+		&ProcessTasklistRequest{
+			Domain:    "test-domain",
+			TaskList:  "test-tasklist",
+			Partition: 1,
+			WorkerId:  "test-worker-id",
+		},
 	)
 
 	mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()

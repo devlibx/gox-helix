@@ -9,8 +9,14 @@ import (
 	"sync"
 )
 
+type CreateDomainTasklistProcessorRequest struct {
+	Domain   string
+	TaskList string
+	WorkerId string
+}
+
 type Factory interface {
-	GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string, taskList string) (DomainTasklistProcessor, error)
+	GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (DomainTasklistProcessor, error)
 
 	Stop(ctx context.Context) error
 }
@@ -23,17 +29,20 @@ type factoryImpl struct {
 	DomainTasklistProcessorsMutex *sync.Mutex
 }
 
-func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, domain string, taskList string) (DomainTasklistProcessor, error) {
+func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (DomainTasklistProcessor, error) {
 	f.DomainTasklistProcessorsMutex.Lock()
 	defer f.DomainTasklistProcessorsMutex.Unlock()
 
-	key := fmt.Sprintf("%s-%s", domain, taskList)
+	key := fmt.Sprintf("%s-%s", request.Domain, request.TaskList)
 	if _, ok := f.DomainTasklistProcessors[key]; !ok {
 		f.DomainTasklistProcessors[key] = NewDomainTasklistProcessor(
 			f.CrossFunction,
 			f.lockService,
-			domain,
-			taskList,
+			&DomainTasklistProcessorCfg{
+				Domain:   request.Domain,
+				TaskList: request.TaskList,
+				WorkerId: request.WorkerId,
+			},
 		)
 	}
 	return f.DomainTasklistProcessors[key], nil
