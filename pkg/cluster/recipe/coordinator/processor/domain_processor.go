@@ -34,7 +34,12 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 
 		if !partitionIsStillActiveAssignedToMe {
 			if tp, ok := d.tasklistProcessor[activePartition]; ok {
+
+				// Stop this tasklist processor
 				_ = tp.Stop(context.Background())
+
+				// Delete this task processor
+				delete(d.tasklistProcessor, activePartition)
 			}
 		}
 	}
