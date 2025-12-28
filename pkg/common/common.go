@@ -3,5 +3,6 @@ package common
 import "context"
 
 type ApplicationStopSignal struct {
-	Ctx context.Context
+	Ctx           context.Context
+	ContextCancel context.CancelFunc
 }
