@@ -37,7 +37,8 @@ func main() {
 	appConfig.SetDefaults()
 	fmt.Printf("%+v\n", appConfig)
 
-	appSignal := &common2.ApplicationStopSignal{Ctx: context.Background()}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	appSignal := &common2.ApplicationStopSignal{Ctx: ctx, ContextCancel: cancel}
 
 	appCtx := &common.ApplicationCtx{}
 	app := fx.New(
@@ -71,7 +72,7 @@ func main() {
 			&appCtx.ExecutorService,
 		),
 	)
-	err = app.Start(context.Background())
+	err = app.Start(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -79,7 +80,7 @@ func main() {
 	for _, domainObj := range appConfig.Domains {
 		for _, tl := range domainObj.TaskLists {
 			_, _ = appCtx.ProcessorFactory.GetOrCreateDomainTasklistProcessor(
-				context.Background(),
+				ctx,
 				processor.CreateDomainTasklistProcessorRequest{
 					Domain:   domainObj.Name,
 					TaskList: tl.Name,
@@ -88,21 +89,10 @@ func main() {
 			)
 		}
 	}
-	/*for _, domainObj := range appConfig.Domains {
-		for _, tl := range domainObj.TaskLists {
-			go func(d *config.Domain, tl *config.TaskList) {
-				err := appCtx.PartitionDistributionService.Process(context.Background(), coordinator.DistributionRequest{
-					DomainName: domainObj.Name,
-					TaskList:   tl.Name,
-				})
-				if err != nil {
-					panic(err)
-				}
-			}(domainObj, tl)
-		}
-	}*/
 
-	time.Sleep(11 * time.Minute)
+	time.Sleep(30 * time.Second)
+	appSignal.ContextCancel()
+	time.Sleep(30 * time.Second)
 }
 
 func NewCleanupOnBootupProvider(lifecycle fx.Lifecycle, connectionHolder databaseCommon.ConnectionHolder) {
