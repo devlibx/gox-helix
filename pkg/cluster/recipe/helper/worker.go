@@ -26,7 +26,7 @@ type WorkerHelper struct {
 	nodeId           string
 }
 
-func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
+func (w *WorkerHelper) Setup_(ctx context.Context, domain *config.Domain) error {
 	if domain.Disabled == true {
 		return nil
 	}
@@ -82,7 +82,7 @@ func (w *WorkerHelper) Setup(ctx context.Context, domain *config.Domain) error {
 	return nil
 }
 
-func NewWorkerHelper(
+func NewWorkerHelper_(
 	cf gox.CrossFunction,
 	workerDataLayer *worker.DataLayer,
 	domainDataLayer *domain.DataLayer,

@@ -10,7 +10,7 @@ import (
 	helix "github.com/devlibx/gox-helix"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/helper"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/executor"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
 	"github.com/devlibx/gox-helix/pkg/common"
@@ -37,12 +37,15 @@ func main() {
 
 	appCtx := &common.ApplicationCtx{}
 	app := fx.New(
+
+		fx.Supply(&appConfig),
+		fx.Supply(&appConfig.Domains),
+
 		fx.Provide(gox.NewCrossFunction),
 		fx.Provide(func() (*sql.DB, error) {
 			return sql.Open("mysql", helix.GetDefaultSqlUrl())
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
-		fx.Provide(helper.NewWorkerHelper),
 
 		// All setup for this framework
 		fx.Provide(coordinator.NewPartitionDistributionService),
@@ -58,10 +61,13 @@ func main() {
 		fx.Provide(func(dataLayer *worker.DataLayer) coordinator.WorkerService { return dataLayer }),
 		fx.Provide(func(dataLayer *domain.DataLayer) coordinator.DomainService { return dataLayer }),
 
+		fx.Provide(executor.NewExecutor),
+		fx.Invoke(NewCleanupOnBootupProvider),
+		fx.Invoke(executor.NewExecutorLifecycle),
+
 		fx.Populate(
 			&appCtx.DomainDataLayer,
 			&appCtx.WorkerDataLayer,
-			&appCtx.WorkerHelper,
 			&appCtx.ConnectionHolder,
 			&appCtx.PartitionDistributionService,
 		),
@@ -69,22 +75,6 @@ func main() {
 	err = app.Start(context.Background())
 	if err != nil {
 		panic(err)
-	}
-
-	// Clean DB
-	db := appCtx.ConnectionHolder.GetHelixMasterDbConnection()
-	if db == nil {
-		panic("failed to connect to database")
-	}
-	defer db.Close()
-	_, _ = db.Exec("DELETE FROM helix_workers WHERE domain='food'")
-	_, _ = db.Exec("DELETE FROM helix_workers WHERE domain='mobility'")
-	_, _ = db.Exec("DELETE FROM helix_domain WHERE domain='food'")
-	_, _ = db.Exec("DELETE FROM helix_domain WHERE domain='mobility'")
-	for _, domainObj := range appConfig.Domains {
-		if err = appCtx.WorkerHelper.Setup(context.Background(), domainObj); err != nil {
-			panic(err)
-		}
 	}
 
 	for _, domainObj := range appConfig.Domains {
@@ -100,5 +90,28 @@ func main() {
 			}(domainObj, tl)
 		}
 	}
+
 	time.Sleep(11 * time.Minute)
+}
+
+func NewCleanupOnBootupProvider(lifecycle fx.Lifecycle, connectionHolder databaseCommon.ConnectionHolder) {
+	lifecycle.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			db := connectionHolder.GetHelixMasterDbConnection()
+			_, _ = db.Exec("TRUNCATE TABLE helix_workers")
+			_, _ = db.Exec("TRUNCATE TABLE helix_domain")
+			_, _ = db.Exec("TRUNCATE TABLE helix_worker_partition_mapping")
+			_, _ = db.Exec("TRUNCATE TABLE helix_locks")
+			_, _ = db.Exec("DELETE FROM helix_workers WHERE domain='food'")
+			_, _ = db.Exec("DELETE FROM helix_workers WHERE domain='mobility'")
+			_, _ = db.Exec("DELETE FROM helix_domain WHERE domain='food'")
+			_, _ = db.Exec("DELETE FROM helix_domain WHERE domain='mobility'")
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			_ = connectionHolder.GetHelixMasterDbConnection().Close()
+			return nil
+		},
+	})
+
 }
