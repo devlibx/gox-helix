@@ -26,7 +26,7 @@ func (s *serviceImpl) stopDomainOnStop(ctx context.Context, domain *config.Domai
 			WorkerID: s.workerId,
 		},
 	); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to deregister worker=%s for domain=%s", s.workerId, domain.Name))
+		return errors.Wrap(err, fmt.Sprintf("[SHUTDOWN] failed to deregister worker=%s for domain=%s", s.workerId, domain.Name))
 	} else {
 		slog.Info("[SHUTDOWN] worker deregistered successfully on shoutdown", "domain", domain.Name, "workerId", s.workerId)
 	}
