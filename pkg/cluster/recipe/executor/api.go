@@ -34,6 +34,7 @@ type serviceImpl struct {
 	workerDataLayer              *worker.DataLayer
 	domainDataLayer              *domain.DataLayer
 	partitionService             coordinator.PartitionService
+	domainService                domain.Service
 	PartitionDistributionService coordinator.PartitionDistributionService
 }
 
@@ -42,6 +43,7 @@ func NewExecutor(
 	domainConfigs *config.Config,
 	workerDataLayer *worker.DataLayer,
 	domainDataLayer *domain.DataLayer,
+	domainService domain.Service,
 	partitionService coordinator.PartitionService,
 	PartitionDistributionService coordinator.PartitionDistributionService,
 ) (Service, error) {
@@ -50,6 +52,7 @@ func NewExecutor(
 		domainConfigs:                domainConfigs,
 		workerDataLayer:              workerDataLayer,
 		domainDataLayer:              domainDataLayer,
+		domainService:                domainService,
 		partitionService:             partitionService,
 		PartitionDistributionService: PartitionDistributionService,
 		workerId:                     uuid.NewString(),

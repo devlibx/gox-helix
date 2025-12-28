@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix"
+	"github.com/devlibx/gox-helix/pkg/common/config"
 	database "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
@@ -18,14 +19,15 @@ import (
 )
 
 type testDomainInfo struct {
-	db     *sql.DB
-	domain Service
-	ctx    context.Context
-	config Config
+	db         *sql.DB
+	domain     Service
+	ctx        context.Context
+	cfg        *config.Config
+	domainName string
 }
 
 // Helper to setup domain test with a specific config
-func setupDomainTestWithConfig(t *testing.T, db *sql.DB, config Config) (Service, context.Context) {
+func setupDomainTestWithConfig(t *testing.T, db *sql.DB, cfg *config.Config) (Service, context.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
@@ -37,8 +39,8 @@ func setupDomainTestWithConfig(t *testing.T, db *sql.DB, config Config) (Service
 		fx.Provide(func() database.ConnectionHolder {
 			return database.NewConnectionHolder(db)
 		}),
-		fx.Provide(func() Config {
-			return config
+		fx.Provide(func() *config.Config {
+			return cfg
 		}),
 		fx.Provide(NewDomainDataLayer),
 		fx.Provide(NewService),
@@ -69,108 +71,129 @@ func setupDomainTest(t *testing.T) *testDomainInfo {
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.Close()
+		_ = db.Close()
 	})
 
-	testConfig := Config{
-		Domain: "test_domain_" + uuid.NewString(),
-		Domains: []TaskList{
-			{Name: "task_list_1", PartitionCount: 10},
-			{Name: "task_list_2", PartitionCount: 20},
+	domainName := "test_domain_" + uuid.NewString()
+	testConfig := &config.Config{
+		Domains: map[string]*config.Domain{
+			domainName: {
+				TaskLists: map[string]*config.TaskList{
+					"task_list_1": {
+						PartitionCount: 10,
+					},
+					"task_list_2": {
+						PartitionCount: 20,
+					},
+				},
+			},
 		},
 	}
+	testConfig.SetDefaults()
 
 	domain, ctx := setupDomainTestWithConfig(t, db, testConfig)
 
 	return &testDomainInfo{
-		db:     db,
-		domain: domain,
-		ctx:    ctx,
-		config: testConfig,
+		db:         db,
+		domain:     domain,
+		ctx:        ctx,
+		cfg:        testConfig,
+		domainName: domainName,
 	}
 }
 
-func TestDomain_Init(t *testing.T) {
+func TestDomain_Start(t *testing.T) {
 	td := setupDomainTest(t)
 
-	err := td.domain.Init(td.ctx)
+	err := td.domain.Start(td.ctx)
 	assert.NoError(t, err)
 
-	for _, taskList := range td.config.Domains {
-		var fetchedDomain, fetchedTasklist string
-		var fetchedPartitionCount int
-		query := "SELECT domain, tasklist, partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
-		err := td.db.QueryRowContext(td.ctx, query, td.config.Domain, taskList.Name).Scan(&fetchedDomain, &fetchedTasklist, &fetchedPartitionCount)
-		assert.NoError(t, err)
-		assert.Equal(t, td.config.Domain, fetchedDomain)
-		assert.Equal(t, taskList.Name, fetchedTasklist)
-		assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+	for domainName, domain := range td.cfg.Domains {
+		for tasklistName, taskList := range domain.TaskLists {
+			var fetchedDomain, fetchedTasklist string
+			var fetchedPartitionCount int
+			query := "SELECT domain, tasklist, partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
+			err := td.db.QueryRowContext(td.ctx, query, domainName, tasklistName).Scan(&fetchedDomain, &fetchedTasklist, &fetchedPartitionCount)
+			assert.NoError(t, err)
+			assert.Equal(t, domainName, fetchedDomain)
+			assert.Equal(t, tasklistName, fetchedTasklist)
+			assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+		}
 	}
 }
 
-func TestDomain_Init_Idempotency(t *testing.T) {
+func TestDomain_Start_Idempotency(t *testing.T) {
 	td := setupDomainTest(t)
 
-	// First Init
-	err := td.domain.Init(td.ctx)
+	// First Start
+	err := td.domain.Start(td.ctx)
 	assert.NoError(t, err)
 
-	// Verify first init
-	for _, taskList := range td.config.Domains {
-		var fetchedPartitionCount int
-		query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
-		err := td.db.QueryRowContext(td.ctx, query, td.config.Domain, taskList.Name).Scan(&fetchedPartitionCount)
-		assert.NoError(t, err)
-		assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+	// Verify first start
+	for domainName, domain := range td.cfg.Domains {
+		for tasklistName, taskList := range domain.TaskLists {
+			var fetchedPartitionCount int
+			query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
+			err := td.db.QueryRowContext(td.ctx, query, domainName, tasklistName).Scan(&fetchedPartitionCount)
+			assert.NoError(t, err)
+			assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+		}
 	}
 
-	// Create a new domain with the same config and run Init again
-	domain2, ctx2 := setupDomainTestWithConfig(t, td.db, td.config)
-	err = domain2.Init(ctx2)
+	// Create a new domain with the same config and run Start again
+	domain2, ctx2 := setupDomainTestWithConfig(t, td.db, td.cfg)
+	err = domain2.Start(ctx2)
 	assert.NoError(t, err)
 
 	// Verify again
-	for _, taskList := range td.config.Domains {
-		var fetchedPartitionCount int
-		query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
-		err := td.db.QueryRowContext(td.ctx, query, td.config.Domain, taskList.Name).Scan(&fetchedPartitionCount)
-		assert.NoError(t, err)
-		assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+	for domainName, domain := range td.cfg.Domains {
+		for tasklistName, taskList := range domain.TaskLists {
+			var fetchedPartitionCount int
+			query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
+			err := td.db.QueryRowContext(ctx2, query, domainName, tasklistName).Scan(&fetchedPartitionCount)
+			assert.NoError(t, err)
+			assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+		}
 	}
 }
 
-func TestDomain_Init_AddNewTaskList(t *testing.T) {
+func TestDomain_Start_AddNewTaskList(t *testing.T) {
 	td := setupDomainTest(t)
 
-	// First Init
-	err := td.domain.Init(td.ctx)
+	// First Start
+	err := td.domain.Start(td.ctx)
 	assert.NoError(t, err)
 
-	// Verify first init
-	for _, taskList := range td.config.Domains {
-		var fetchedPartitionCount int
-		query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
-		err := td.db.QueryRowContext(td.ctx, query, td.config.Domain, taskList.Name).Scan(&fetchedPartitionCount)
-		assert.NoError(t, err)
-		assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+	// Verify first start
+	for domainName, domain := range td.cfg.Domains {
+		for tasklistName, taskList := range domain.TaskLists {
+			var fetchedPartitionCount int
+			query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
+			err := td.db.QueryRowContext(td.ctx, query, domainName, tasklistName).Scan(&fetchedPartitionCount)
+			assert.NoError(t, err)
+			assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+		}
 	}
 
 	// Create a new config with an additional task list
-	newConfig := td.config
-	newTaskList := TaskList{Name: "task_list_3", PartitionCount: 30}
-	newConfig.Domains = append(newConfig.Domains, newTaskList)
+	newConfig := td.cfg
+	newTaskList := &config.TaskList{PartitionCount: 30}
+	newConfig.Domains[td.domainName].TaskLists["task_list_3"] = newTaskList
+	newConfig.SetDefaults()
 
-	// Create a new domain with the new config and run Init
+	// Create a new domain with the new config and run Start
 	domain2, ctx2 := setupDomainTestWithConfig(t, td.db, newConfig)
-	err = domain2.Init(ctx2)
+	err = domain2.Start(ctx2)
 	assert.NoError(t, err)
 
 	// Verify all task lists are present
-	for _, taskList := range newConfig.Domains {
-		var fetchedPartitionCount int
-		query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
-		err := td.db.QueryRowContext(ctx2, query, newConfig.Domain, taskList.Name).Scan(&fetchedPartitionCount)
-		assert.NoError(t, err)
-		assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+	for domainName, domain := range newConfig.Domains {
+		for tasklistName, taskList := range domain.TaskLists {
+			var fetchedPartitionCount int
+			query := "SELECT partition_count FROM helix_domain WHERE domain = ? AND tasklist = ?"
+			err := td.db.QueryRowContext(ctx2, query, domainName, tasklistName).Scan(&fetchedPartitionCount)
+			assert.NoError(t, err)
+			assert.Equal(t, taskList.PartitionCount, fetchedPartitionCount)
+		}
 	}
 }
