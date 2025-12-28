@@ -52,22 +52,11 @@ func main() {
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
-		// All setup for this framework
-		fx.Provide(domain.NewService),
-		fx.Provide(processor.NewProcessorFactory),
-
-		fx.Provide(coordinator.NewPartitionDistributionService),
-		fx.Provide(func(cf gox.CrossFunction, ws coordinator.WorkerService, ps coordinator.PartitionService, ds coordinator.DomainService) (coordinator.DistributorStrategy, error) {
-			return coordinator.NewDistributorStrategy(cf, ws, ps, ds)
-		}),
-		fx.Provide(locker.NewLockerDataLayer),           // Locker data layer
-		fx.Provide(locker.NewLocker),                    // Locker
-		fx.Provide(coordinator.NewCoordinatorDataLayer), // Coordinator
-		fx.Provide(worker.NewWorkerDataLayer),           // Worker
-		fx.Provide(domain.NewDomainDataLayer),           // Domain
-		fx.Provide(func(dataLayer *coordinator.DataLayer) coordinator.PartitionService { return dataLayer }),
-		fx.Provide(func(dataLayer *worker.DataLayer) coordinator.WorkerService { return dataLayer }),
-		fx.Provide(func(dataLayer *domain.DataLayer) coordinator.DomainService { return dataLayer }),
+		processor.Provider,
+		locker.Provider,
+		coordinator.Provider,
+		domain.Provider,
+		worker.Provider,
 
 		fx.Provide(executor.NewExecutor),
 		fx.Invoke(NewCleanupOnBootupProvider),
