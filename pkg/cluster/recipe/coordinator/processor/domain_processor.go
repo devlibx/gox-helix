@@ -64,6 +64,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 					Partition: task,
 					WorkerId:  d.config.WorkerId,
 				},
+				nil, // FIXME
 			)
 		}
 		_, _ = d.tasklistProcessor[task].Start(context.Background())

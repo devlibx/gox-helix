@@ -70,3 +70,19 @@ func NewDefaultTasklistProcessorConfig() *TasklistProcessorConfig {
 		LockTTL:                         15 * time.Second,
 	}
 }
+
+type Work struct {
+	Domain           string             `json:"domain"`
+	Tasklist         string             `json:"tasklist"`
+	WorkerId         string             `json:"worker_id"`
+	Partition        int                `json:"partition"`
+	CompletedChannel chan *WorkResponse `json:"-"`
+}
+
+func (w *Work) String() string {
+	return fmt.Sprintf("Work{Domain:%s, Tasklist:%s, Partition:%d, WorkerId=%s}", w.Domain, w.Tasklist, w.Partition, w.WorkerId)
+}
+
+type WorkResponse struct {
+	Err error
+}

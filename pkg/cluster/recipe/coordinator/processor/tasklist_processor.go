@@ -25,14 +25,14 @@ type tasklistProcessorImpl struct {
 	config           *TasklistProcessorConfig
 	lockService      locker.Locker
 	partitionService coordinator.PartitionService
+	workChannel      chan<- *Work
 
-	domain       string
-	tasklist     string
-	partition    int
-	lockKey      string
-	ownerId      string
-	logPrefix    string
-	workCallback func() // For testing purposes
+	domain    string
+	tasklist  string
+	partition int
+	lockKey   string
+	ownerId   string
+	logPrefix string
 
 	mutex    sync.Mutex
 	running  bool
@@ -48,11 +48,13 @@ func NewTasklistProcessor(
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 	request *ProcessTasklistRequest,
+	workChannel chan<- *Work,
 ) TasklistProcessor {
 	p := &tasklistProcessorImpl{
 		CrossFunction:    cf,
 		config:           config,
 		lockService:      lockService,
+		workChannel:      workChannel,
 		partitionService: partitionService,
 		domain:           request.Domain,
 		tasklist:         request.TaskList,
@@ -155,12 +157,26 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 		default:
 			if lockHeld {
-				t.workCallback()
+				respChannel := make(chan *WorkResponse)
+				t.workChannel <- &Work{
+					Domain:           t.domain,
+					Tasklist:         t.tasklist,
+					WorkerId:         t.ownerId,
+					Partition:        t.partition,
+					CompletedChannel: respChannel,
+				}
+				select {
+				case resp, closed := <-respChannel:
+					if !closed {
+						_ = resp
+					}
+				case <-t.stopChan:
+					slog.Info(t.logPrefix+"internal stop signal received when waiting for work response, stopping tasklist processor", "lockKey", t.lockKey)
+					return
+				}
 			} else {
 				time.Sleep(10 * time.Millisecond)
 			}
-			// Small sleep to prevent tight loop even when working
-			time.Sleep(1 * time.Millisecond)
 		}
 	}
 }
