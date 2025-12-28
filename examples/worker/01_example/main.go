@@ -9,6 +9,7 @@ import (
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
+	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
@@ -37,13 +38,20 @@ func main() {
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
 		// Provide Service components
-		fx.Provide(func() domain.Config {
-			return domain.Config{
-				Domain: domainName,
-				Domains: []domain.TaskList{
-					{Name: "simulation-task", PartitionCount: 10},
+		fx.Provide(func() *config.Config {
+			c := &config.Config{
+				Domains: map[string]*config.Domain{
+					domainName: {
+						TaskLists: map[string]*config.TaskList{
+							"simulation-task": {
+								PartitionCount: 10,
+							},
+						},
+					},
 				},
 			}
+			c.SetDefaults()
+			return c
 		}),
 
 		fx.Provide(domain.NewDomainDataLayer),
@@ -55,7 +63,7 @@ func main() {
 		fx.Invoke(func(lc fx.Lifecycle, ds domain.Service) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					return ds.Init(ctx)
+					return ds.Start(ctx)
 				},
 				OnStop: func(ctx context.Context) error {
 					return nil

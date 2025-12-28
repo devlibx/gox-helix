@@ -6,35 +6,39 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	helixDomainMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/domain/database"
-	"github.com/google/uuid"
+	"github.com/devlibx/gox-helix/pkg/common/config"
+	"log/slog"
 )
 
 type domainImpl struct {
 	gox.CrossFunction
-	dataLayer *DataLayer
-	config    Config
-	nodeId    string
+	dataLayer    *DataLayer
+	domainConfig *config.Config
 }
 
-func NewService(cf gox.CrossFunction, dataLayer *DataLayer, config Config) (Service, error) {
+func NewService(cf gox.CrossFunction, dataLayer *DataLayer, domainConfig *config.Config) (Service, error) {
 	return &domainImpl{
 		CrossFunction: cf,
 		dataLayer:     dataLayer,
-		config:        config,
-		nodeId:        uuid.NewString(),
+		domainConfig:  domainConfig,
 	}, nil
 }
 
-func (s *domainImpl) Init(ctx context.Context) error {
-	for _, taskList := range s.config.Domains {
-		err := s.dataLayer.UpsertTasklist(ctx, helixDomainMysql.UpsertTasklistParams{
-			Domain:         s.config.Domain,
-			Tasklist:       taskList.Name,
-			Metadata:       sql.NullString{Valid: true, String: `{}`},
-			PartitionCount: uint32(taskList.PartitionCount),
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to upsert domain=%s, taskList=%s", s.config.Domain, taskList.Name)
+func (s *domainImpl) Start(ctx context.Context) error {
+	for _, d := range s.domainConfig.Domains {
+		for _, tl := range d.TaskLists {
+			if tl.Disabled {
+				slog.Warn("tasklist is disabled", "domain", d.Name, "tasklist", tl.Name)
+				continue
+			}
+			if err := s.dataLayer.UpsertTasklist(ctx, helixDomainMysql.UpsertTasklistParams{
+				Domain:         d.Name,
+				Tasklist:       tl.Name,
+				Metadata:       sql.NullString{Valid: true, String: `{}`},
+				PartitionCount: uint32(tl.PartitionCount),
+			}); err != nil {
+				return errors.Wrap(err, "failed to upsert domain=%s, taskList=%s", d.Name, tl.Name)
+			}
 		}
 	}
 	return nil

@@ -12,6 +12,7 @@ import (
 	"github.com/devlibx/gox-helix"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
+	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/fx"
@@ -41,13 +42,20 @@ func main() {
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
 		// Provide Service components
-		fx.Provide(func() domain.Config {
-			return domain.Config{
-				Domain: "example-domain",
-				Domains: []domain.TaskList{
-					{Name: "task1", PartitionCount: 10},
+		fx.Provide(func() *config.Config {
+			c := &config.Config{
+				Domains: map[string]*config.Domain{
+					"example-domain": {
+						TaskLists: map[string]*config.TaskList{
+							"task1": {
+								PartitionCount: 10,
+							},
+						},
+					},
 				},
 			}
+			c.SetDefaults()
+			return c
 		}),
 		fx.Provide(domain.NewDomainDataLayer),
 		fx.Provide(domain.NewService),
@@ -70,7 +78,7 @@ func main() {
 					log.Println("### Starting Application ###")
 
 					// Initialize the domain
-					if err := d.Init(ctx); err != nil {
+					if err := d.Start(ctx); err != nil {
 						log.Fatalf("failed to init domain: %v", err)
 					}
 					log.Println("Service initialized successfully")

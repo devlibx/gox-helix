@@ -48,6 +48,7 @@ func main() {
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
 		// All setup for this framework
+		fx.Provide(domain.NewService),
 		fx.Provide(coordinator.NewPartitionDistributionService),
 		fx.Provide(func(cf gox.CrossFunction, ws coordinator.WorkerService, ps coordinator.PartitionService, ds coordinator.DomainService) (coordinator.DistributorStrategy, error) {
 			return coordinator.NewDistributorStrategy(cf, ws, ps, ds)
