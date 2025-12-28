@@ -59,7 +59,7 @@ func NewTasklistProcessor(
 		partition:        request.Partition,
 		lockKey:          fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
 		ownerId:          request.WorkerId,
-		logPrefix:        fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d - tasklist_processor] ", request.Domain, request.TaskList, request.Partition),
+		logPrefix:        fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d, workerId=%s - tasklist_processor] ", request.Domain, request.TaskList, request.Partition, request.WorkerId),
 	}
 
 	return p
@@ -141,6 +141,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			}
 
 		case <-ownershipTicker.C:
+			// To be safe we check if we still are owner - if not then we exit the processing
 			if owned, err := t.partitionService.IsPartitionOwnedByOwner(context.Background(), t.domain, t.tasklist, t.ownerId, t.partition); err != nil {
 				slog.Error(t.logPrefix+"failed to check partition ownership", "lockKey", t.lockKey, "err", err)
 			} else if !owned {
