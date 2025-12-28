@@ -50,7 +50,15 @@ type TasklistProcessorConfig struct {
 	// How often to "work" (log a message)
 	WorkInterval time.Duration
 
-	// How often to refresh the lock
+	// When we start the task list processing, we need to make sure we have the lock on
+	// <domain><tasklist><partition>
+	// Why - because when shuffle happens the previous worker may still be holding the lock and
+	// in process of releasing it
+	InitialLockAcquireRetryInterval time.Duration
+
+	// When we are processing the task list - we want to make suer we continue to keep the lock with
+	// ourselves
+	// So in some interval we re-acquire lock to make sure we continue to own the lock
 	LockAcquireRefreshInterval time.Duration
 
 	// How long the lock should be held for. Must be > LockAcquireRefreshInterval
@@ -60,8 +68,9 @@ type TasklistProcessorConfig struct {
 // NewDefaultTasklistProcessorConfig creates a new config with default values.
 func NewDefaultTasklistProcessorConfig() *TasklistProcessorConfig {
 	return &TasklistProcessorConfig{
-		WorkInterval:               1 * time.Second,
-		LockAcquireRefreshInterval: 5 * time.Second,
-		LockTTL:                    15 * time.Second,
+		WorkInterval:                    1 * time.Second,
+		InitialLockAcquireRetryInterval: 500 * time.Millisecond,
+		LockAcquireRefreshInterval:      5 * time.Second,
+		LockTTL:                         15 * time.Second,
 	}
 }

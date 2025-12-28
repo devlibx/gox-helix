@@ -102,6 +102,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	}
 
 	// Ensure the lock is released when we exit.
+	// The lock has expiry of N sec - so just in-case we fail to release it, it will be free after sometime
 	defer func() {
 		if _, err := t.lockService.ReleaseLock(context.Background(), locker.ReleaseLockRequest{
 			Domain:  t.domain,
@@ -131,6 +132,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			}
 
 		case <-refreshTicker.C:
+			// We must hold the lock so we refresh it periodically to make sure we have the lock
 			if _, err := t.lockService.AcquireLock(context.Background(), locker.AcquireLockRequest{
 				Domain:  t.domain,
 				LockKey: t.lockKey,
@@ -166,6 +168,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 			slog.Info(t.logPrefix + "stop signal received before lock initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
 		default:
+			// No-OP - otherwise this select will block for event in stopChannel
 		}
 
 		// Take a lock first
@@ -182,7 +185,8 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 
 		// Retry loc but also stop if we found we are stopped in middle
 		select {
-		case <-time.After(t.config.LockAcquireRefreshInterval):
+		case <-time.After(t.config.InitialLockAcquireRetryInterval):
+			// Sleep before we retry to capture lock again
 		case <-t.stopChan:
 			slog.Info(t.logPrefix + "stop signal received while waiting to retry to take initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
@@ -192,6 +196,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 
 // Stop gracefully terminates the processor's execution loop.
 func (t *tasklistProcessorImpl) Stop(ctx context.Context) error {
+
 	t.mutex.Lock()
 	if !t.running {
 		t.mutex.Unlock()
@@ -203,6 +208,7 @@ func (t *tasklistProcessorImpl) Stop(ctx context.Context) error {
 	t.running = false
 	t.mutex.Unlock()
 
+	// Wait for "processingLoop" to tidy up and stop
 	t.wg.Wait()
 
 	slog.Info(t.logPrefix+"tasklist processor stopped", "lockKey", t.lockKey)
