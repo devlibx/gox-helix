@@ -31,9 +31,10 @@ type serviceImpl struct {
 	domainConfigs *config.Config
 	workerId      string
 
-	workerDataLayer  *worker.DataLayer
-	domainDataLayer  *domain.DataLayer
-	partitionService coordinator.PartitionService
+	workerDataLayer              *worker.DataLayer
+	domainDataLayer              *domain.DataLayer
+	partitionService             coordinator.PartitionService
+	PartitionDistributionService coordinator.PartitionDistributionService
 }
 
 func NewExecutor(
@@ -42,14 +43,16 @@ func NewExecutor(
 	workerDataLayer *worker.DataLayer,
 	domainDataLayer *domain.DataLayer,
 	partitionService coordinator.PartitionService,
+	PartitionDistributionService coordinator.PartitionDistributionService,
 ) (Service, error) {
 	s := &serviceImpl{
-		CrossFunction:    cf,
-		domainConfigs:    domainConfigs,
-		workerDataLayer:  workerDataLayer,
-		domainDataLayer:  domainDataLayer,
-		partitionService: partitionService,
-		workerId:         uuid.NewString(),
+		CrossFunction:                cf,
+		domainConfigs:                domainConfigs,
+		workerDataLayer:              workerDataLayer,
+		domainDataLayer:              domainDataLayer,
+		partitionService:             partitionService,
+		PartitionDistributionService: PartitionDistributionService,
+		workerId:                     uuid.NewString(),
 	}
 	return s, nil
 }

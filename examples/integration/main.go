@@ -77,7 +77,7 @@ func main() {
 		panic(err)
 	}
 
-	for _, domainObj := range appConfig.Domains {
+	/*for _, domainObj := range appConfig.Domains {
 		for _, tl := range domainObj.TaskLists {
 			go func(d *config.Domain, tl *config.TaskList) {
 				err := appCtx.PartitionDistributionService.Process(context.Background(), coordinator.DistributionRequest{
@@ -89,7 +89,7 @@ func main() {
 				}
 			}(domainObj, tl)
 		}
-	}
+	}*/
 
 	time.Sleep(11 * time.Minute)
 }

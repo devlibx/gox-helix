@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/devlibx/gox-base/v2/errors"
-	"log/slog"
-	"time"
-
 	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-base/v2/errors"
 	helixCoordinatorMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/database"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
+	"github.com/go-sql-driver/mysql"
+	"log/slog"
+	"time"
 )
 
 // DataLayer provides the database access layer for coordinator functions.
@@ -86,11 +86,15 @@ func (d *DataLayer) GetActivePartitionMappings(ctx context.Context, domain strin
 
 func (d *DataLayer) PersistDistribution(ctx context.Context, domain string, tasklist string, response *DistributionResponse) error {
 	var err error
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 10; i++ {
 		err = d.internalPersistDistribution(ctx, domain, tasklist, response)
 		if err != nil {
-			slog.Warn("got error while persisting distribution (retry)", "err", err.Error(), "domain", domain, "tasklist", tasklist, "retry", i)
-			time.Sleep(100 * time.Millisecond)
+			if mySqlErr, ok := errors.AsTyped[*mysql.MySQLError](err); ok && mySqlErr.Number == 1213 {
+				slog.Warn("(expected if unfrequent or at boot time) got error while persisting distribution (retry)", "err", err.Error(), "domain", domain, "tasklist", tasklist, "retry", i)
+				time.Sleep(100 * time.Millisecond)
+			} else {
+				return errors.Wrap(err, "got error while persisting distribution: domain=%s, tasklist=%s", domain, tasklist)
+			}
 		} else {
 			break
 		}
