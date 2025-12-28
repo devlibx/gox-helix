@@ -14,6 +14,8 @@ import (
 // Service is the main executor service which is responsible for managing the lifecycle of the workers.
 // It starts the workers, registers them and also de-registers them when the service is stopped.
 type Service interface {
+	GetWorkerId() string
+
 	// Start begins the executor service. For each configured domain, it ensures all tasklists are registered
 	// in the database and registers a unique worker instance to participate in the cluster for that domain.
 	// This method is typically called once at application startup.
@@ -36,6 +38,10 @@ type serviceImpl struct {
 	partitionService             coordinator.PartitionService
 	domainService                domain.Service
 	PartitionDistributionService coordinator.PartitionDistributionService
+}
+
+func (s *serviceImpl) GetWorkerId() string {
+	return s.workerId
 }
 
 func NewExecutor(

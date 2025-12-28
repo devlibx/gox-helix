@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"go.uber.org/mock/gomock"
 	"sync"
 	"testing"
@@ -11,7 +12,6 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
-	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 )
