@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"sync"
 )
@@ -10,6 +11,7 @@ import (
 type domainTasklistProcessorImpl struct {
 	gox.CrossFunction
 	lockService           locker.Locker
+	partitionService      coordinator.PartitionService
 	config                *DomainTasklistProcessorCfg // Only the config, not the full dependencies
 	activePartitions      []int
 	activePartitionsMutex *sync.Mutex
@@ -50,6 +52,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request Domai
 				d.CrossFunction,
 				NewDefaultTasklistProcessorConfig(),
 				d.lockService,
+				d.partitionService,
 				&ProcessTasklistRequest{
 					Domain:    d.config.Domain,
 					TaskList:  d.config.TaskList,
@@ -82,11 +85,13 @@ type DomainTasklistProcessorCfg struct {
 func NewDomainTasklistProcessor(
 	cf gox.CrossFunction,
 	lockService locker.Locker,
+	partitionService coordinator.PartitionService,
 	cfg *DomainTasklistProcessorCfg,
 ) DomainTasklistProcessor {
 	p := &domainTasklistProcessorImpl{
 		CrossFunction:         cf,
 		lockService:           lockService,
+		partitionService:      partitionService,
 		config:                cfg,
 		activePartitions:      make([]int, 0),
 		tasklistProcessor:     make(map[int]TasklistProcessor),

@@ -110,6 +110,21 @@ func (mr *MockPartitionServiceMockRecorder) GetValidPartitionByOwnerId(ctx, doma
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValidPartitionByOwnerId", reflect.TypeOf((*MockPartitionService)(nil).GetValidPartitionByOwnerId), ctx, domain, tasklist, ownerId)
 }
 
+// IsPartitionOwnedByOwner mocks base method.
+func (m *MockPartitionService) IsPartitionOwnedByOwner(ctx context.Context, domain, tasklist, ownerId string, partition int) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPartitionOwnedByOwner", ctx, domain, tasklist, ownerId, partition)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsPartitionOwnedByOwner indicates an expected call of IsPartitionOwnedByOwner.
+func (mr *MockPartitionServiceMockRecorder) IsPartitionOwnedByOwner(ctx, domain, tasklist, ownerId, partition any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPartitionOwnedByOwner", reflect.TypeOf((*MockPartitionService)(nil).IsPartitionOwnedByOwner), ctx, domain, tasklist, ownerId, partition)
+}
+
 // PersistDistribution mocks base method.
 func (m *MockPartitionService) PersistDistribution(ctx context.Context, domain, tasklist string, response *DistributionResponse) error {
 	m.ctrl.T.Helper()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/common"
 	"sync"
@@ -25,6 +26,7 @@ type factoryImpl struct {
 	gox.CrossFunction
 	stopSignal                    *common.ApplicationStopSignal
 	lockService                   locker.Locker
+	partitionService              coordinator.PartitionService
 	DomainTasklistProcessors      map[string]DomainTasklistProcessor
 	DomainTasklistProcessorsMutex *sync.Mutex
 }
@@ -38,6 +40,7 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, re
 		f.DomainTasklistProcessors[key] = NewDomainTasklistProcessor(
 			f.CrossFunction,
 			f.lockService,
+			f.partitionService,
 			&DomainTasklistProcessorCfg{
 				Domain:   request.Domain,
 				TaskList: request.TaskList,
@@ -61,11 +64,13 @@ func NewProcessorFactory(
 	cf gox.CrossFunction,
 	stopSignal *common.ApplicationStopSignal,
 	lockService locker.Locker,
+	partitionService coordinator.PartitionService,
 ) Factory {
 	f := &factoryImpl{
 		CrossFunction:                 cf,
 		stopSignal:                    stopSignal,
 		lockService:                   lockService,
+		partitionService:              partitionService,
 		DomainTasklistProcessors:      map[string]DomainTasklistProcessor{},
 		DomainTasklistProcessorsMutex: &sync.Mutex{},
 	}

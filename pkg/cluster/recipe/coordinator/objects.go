@@ -20,6 +20,7 @@ type PartitionService interface {
 	GetActivePartitionMappings(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error)
 	PersistDistribution(ctx context.Context, domain string, tasklist string, response *DistributionResponse) error
 	GetValidPartitionByOwnerId(ctx context.Context, domain string, tasklist string, ownerId string) (*WorkerPartitionMapping, error)
+	IsPartitionOwnedByOwner(ctx context.Context, domain string, tasklist string, ownerId string, partition int) (bool, error)
 }
 type DomainService interface {
 	GetTaskListInfo(ctx context.Context, domain string, tasklist string) (*helixDomainMysql.HelixDomain, error)

@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"log/slog"
 	"sync"
 	"time"
@@ -21,8 +22,9 @@ type ProcessTasklistRequest struct {
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
 type tasklistProcessorImpl struct {
 	gox.CrossFunction
-	config      *TasklistProcessorConfig
-	lockService locker.Locker
+	config           *TasklistProcessorConfig
+	lockService      locker.Locker
+	partitionService coordinator.PartitionService
 
 	domain       string
 	tasklist     string
@@ -44,18 +46,20 @@ func NewTasklistProcessor(
 	cf gox.CrossFunction,
 	config *TasklistProcessorConfig,
 	lockService locker.Locker,
+	partitionService coordinator.PartitionService,
 	request *ProcessTasklistRequest,
 ) TasklistProcessor {
 	p := &tasklistProcessorImpl{
-		CrossFunction: cf,
-		config:        config,
-		lockService:   lockService,
-		domain:        request.Domain,
-		tasklist:      request.TaskList,
-		partition:     request.Partition,
-		lockKey:       fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
-		ownerId:       request.WorkerId,
-		logPrefix:     fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d - tasklist_processor] ", request.Domain, request.TaskList, request.Partition),
+		CrossFunction:    cf,
+		config:           config,
+		lockService:      lockService,
+		partitionService: partitionService,
+		domain:           request.Domain,
+		tasklist:         request.TaskList,
+		partition:        request.Partition,
+		lockKey:          fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
+		ownerId:          request.WorkerId,
+		logPrefix:        fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d - tasklist_processor] ", request.Domain, request.TaskList, request.Partition),
 	}
 
 	return p
@@ -111,6 +115,8 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	defer workTicker.Stop()
 	refreshTicker := time.NewTicker(t.config.LockAcquireRefreshInterval)
 	defer refreshTicker.Stop()
+	ownershipTicker := time.NewTicker(time.Second)
+	defer ownershipTicker.Stop()
 
 	lockHeld := true
 	for {
@@ -144,6 +150,14 @@ func (t *tasklistProcessorImpl) processingLoop() {
 					slog.Info(t.logPrefix+"lock re-acquired, resuming work", "lockKey", t.lockKey)
 				}
 				lockHeld = true
+			}
+
+		case <-ownershipTicker.C:
+			if owned, err := t.partitionService.IsPartitionOwnedByOwner(context.Background(), t.domain, t.tasklist, t.ownerId, t.partition); err != nil {
+				slog.Error(t.logPrefix+"failed to check partition ownership", "lockKey", t.lockKey, "err", err)
+			} else if !owned {
+				slog.Info(t.logPrefix+"partition is no longer owned by this worker, stopping tasklist processor", "lockKey", t.lockKey)
+				return
 			}
 
 		case <-t.stopChan:

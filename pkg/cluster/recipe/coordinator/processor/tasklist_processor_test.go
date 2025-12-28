@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/devlibx/gox-base/v2"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/stretchr/testify/assert"
@@ -20,17 +21,19 @@ func TestMain(m *testing.M) {
 }
 
 type testProcessorDeps struct {
-	cf         gox.CrossFunction
-	config     *TasklistProcessorConfig
-	mockCtrl   *gomock.Controller
-	mockLocker *locker.MockLocker
-	stopSignal *common.ApplicationStopSignal
-	processor  TasklistProcessor
+	cf                   gox.CrossFunction
+	config               *TasklistProcessorConfig
+	mockCtrl             *gomock.Controller
+	mockLocker           *locker.MockLocker
+	mockPartitionService *coordinator.MockPartitionService // Use PartitionService mock
+	stopSignal           *common.ApplicationStopSignal
+	processor            TasklistProcessor
 }
 
 func setupTest(t *testing.T) *testProcessorDeps {
 	mockCtrl := gomock.NewController(t)
 	mockLocker := locker.NewMockLocker(mockCtrl)
+	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
 	stopCtx, cancel := context.WithCancel(context.Background())
 	stopSignal := &common.ApplicationStopSignal{Ctx: stopCtx}
 	config := NewDefaultTasklistProcessorConfig()
@@ -39,6 +42,7 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		gox.NewCrossFunction(),
 		config,
 		mockLocker,
+		mockPartitionService,
 		&ProcessTasklistRequest{
 			Domain:    "test-domain",
 			TaskList:  "test-tasklist",
@@ -47,18 +51,22 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		},
 	)
 
+	// Default expectation for ownership checks to allow existing tests to pass
+	mockPartitionService.EXPECT().IsPartitionOwnedByOwner(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+
 	t.Cleanup(func() {
 		cancel()
 		time.Sleep(10 * time.Millisecond)
 	})
 
 	return &testProcessorDeps{
-		cf:         gox.NewCrossFunction(),
-		config:     config,
-		mockCtrl:   mockCtrl,
-		mockLocker: mockLocker,
-		stopSignal: stopSignal,
-		processor:  p,
+		cf:                   gox.NewCrossFunction(),
+		config:               config,
+		mockCtrl:             mockCtrl,
+		mockLocker:           mockLocker,
+		mockPartitionService: mockPartitionService,
+		stopSignal:           stopSignal,
+		processor:            p,
 	}
 }
 
@@ -105,12 +113,14 @@ func TestStop_GracefulShutdown(t *testing.T) {
 func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	mockLocker := locker.NewMockLocker(mockCtrl)
+	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
 	config := NewDefaultTasklistProcessorConfig()
 
 	processor := NewTasklistProcessor(
 		gox.NewCrossFunction(),
 		config,
 		mockLocker,
+		mockPartitionService,
 		&ProcessTasklistRequest{
 			Domain:    "test-domain",
 			TaskList:  "test-tasklist",
@@ -121,6 +131,7 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 
 	mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()
 	mockLocker.EXPECT().ReleaseLock(gomock.Any(), gomock.Any()).Return(&locker.ReleaseLockResponse{}, nil).Times(1)
+	mockPartitionService.EXPECT().IsPartitionOwnedByOwner(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	_, err := processor.Start(context.Background())
 	assert.NoError(t, err)
