@@ -11,8 +11,17 @@ import (
 	"go.uber.org/fx"
 )
 
+// Service is the main executor service which is responsible for managing the lifecycle of the workers.
+// It starts the workers, registers them and also de-registers them when the service is stopped.
 type Service interface {
+	// Start begins the executor service. For each configured domain, it ensures all tasklists are registered
+	// in the database and registers a unique worker instance to participate in the cluster for that domain.
+	// This method is typically called once at application startup.
 	Start(ctx context.Context) error
+
+	// Stop gracefully shuts down the executor service. It de-registers the worker from all domains it had
+	// joined, signaling that this instance will no longer be processing tasks.
+	// This method is typically called once during application shutdown.
 	Stop(ctx context.Context) error
 }
 
