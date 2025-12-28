@@ -4,10 +4,10 @@ CREATE TABLE helix_worker_partition_mapping
     domain     VARCHAR(64)     NOT NULL,
     tasklist   VARCHAR(64)     NOT NULL,
     owner_id   VARCHAR(64)     NOT NULL,
-    status     tinyint         NOT NULL default 'unassigned',
+    status     tinyint         NOT NULL default 1,
     metadata   TEXT            NULL,
     created_at datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    KEY `domain_tasklist_key` (`domain`, `tasklist`)
+    UNIQUE KEY `domain_tasklist_key` (`domain`, `tasklist`)
 );

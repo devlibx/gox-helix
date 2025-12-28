@@ -37,7 +37,7 @@ func main() {
 	appConfig.SetDefaults()
 	fmt.Printf("%+v\n", appConfig)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	appSignal := &common2.ApplicationStopSignal{Ctx: ctx, ContextCancel: cancel}
 
 	appCtx := &common.ApplicationCtx{}
@@ -90,9 +90,9 @@ func main() {
 		}
 	}
 
-	time.Sleep(30 * time.Second)
+	time.Sleep(30 * time.Minute)
 	appSignal.ContextCancel()
-	time.Sleep(30 * time.Second)
+	time.Sleep(30 * time.Minute)
 }
 
 func NewCleanupOnBootupProvider(lifecycle fx.Lifecycle, connectionHolder databaseCommon.ConnectionHolder) {
