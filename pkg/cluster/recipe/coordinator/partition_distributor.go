@@ -67,7 +67,7 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 	}
 
 exit:
-	slog.Info("partition distributor process stopped (context done)", "domain", request.DomainName, "tasklist", request.TaskList)
+	slog.Info("[SHUTDOWN] partition distributor process stopped (context done)", "domain", request.DomainName, "tasklist", request.TaskList)
 	return nil
 }
 
