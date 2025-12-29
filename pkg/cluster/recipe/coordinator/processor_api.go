@@ -91,10 +91,11 @@ func NewDefaultTasklistProcessorConfig() *TasklistProcessorConfig {
 // Work represents a single unit of work to be processed for a specific tasklist partition.
 // It is created by a TasklistProcessor and sent to a work channel for execution.
 type Work struct {
-	Domain    string `json:"domain"`
-	Tasklist  string `json:"tasklist"`
-	WorkerId  string `json:"worker_id"`
-	Partition int    `json:"partition"`
+	Domain           string              `json:"domain"`
+	Tasklist         string              `json:"tasklist"`
+	WorkerId         string              `json:"worker_id"`
+	Partition        int                 `json:"partition"`
+	CompletedChannel chan<- WorkResponse `json:"-"`
 }
 
 func (w *Work) String() string {

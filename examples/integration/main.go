@@ -64,10 +64,11 @@ func main() {
 		fx.Invoke(executor.NewExecutorLifecycle),
 
 		fx.Provide(func() coordinator.ClientFunctionProcessWork {
-			return func(ctx context.Context, work coordinator.Work) (*coordinator.WorkResponse, error) {
+			return func(ctx context.Context, work coordinator.Work) {
 				slog.Info("Got work to do", "work", work)
 				time.Sleep(10 * time.Second)
-				return &coordinator.WorkResponse{}, nil
+				work.CompletedChannel <- coordinator.WorkResponse{}
+				close(work.CompletedChannel)
 			}
 		}),
 

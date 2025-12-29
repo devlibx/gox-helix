@@ -158,17 +158,26 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 		default:
 			if lockHeld {
-				if _, err := t.ClientFunctionProcessWork(
+				completedCh := make(chan coordinator.WorkResponse, 1)
+				t.ClientFunctionProcessWork(
 					context.Background(),
 					coordinator.Work{
-						Domain:    t.domain,
-						Tasklist:  t.tasklist,
-						WorkerId:  t.ownerId,
-						Partition: t.partition,
+						Domain:           t.domain,
+						Tasklist:         t.tasklist,
+						WorkerId:         t.ownerId,
+						Partition:        t.partition,
+						CompletedChannel: completedCh,
 					},
-				); err != nil {
-					slog.Error(t.logPrefix+"failed to run client function", "lockKey", t.lockKey, "err", err)
-					time.Sleep(10 * time.Millisecond)
+				)
+				select {
+				case workResponse, ok := <-completedCh:
+					if ok && workResponse.Err != nil {
+						slog.Error(t.logPrefix+"client failed to do the work", "lockKey", t.lockKey, "err", workResponse.Err)
+						time.Sleep(10 * time.Millisecond)
+					}
+				case <-t.stopChan:
+					slog.Info(t.logPrefix+"internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
+					return
 				}
 			} else {
 				time.Sleep(10 * time.Millisecond)
