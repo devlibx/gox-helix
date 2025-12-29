@@ -111,6 +111,39 @@ func (q *Queries) GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorke
 	return &i, err
 }
 
+const getWorkerByWorkerIdAndDomain = `-- name: GetWorkerByWorkerIdAndDomain :one
+SELECT id, worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+FROM helix_workers
+WHERE domain = ?
+  and worker_id = ?
+`
+
+type GetWorkerByWorkerIdAndDomainParams struct {
+	Domain   string `json:"domain"`
+	WorkerID string `json:"worker_id"`
+}
+
+// GetWorkerByWorkerIdAndDomain
+//
+//	SELECT id, worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+//	FROM helix_workers
+//	WHERE domain = ?
+//	  and worker_id = ?
+func (q *Queries) GetWorkerByWorkerIdAndDomain(ctx context.Context, arg GetWorkerByWorkerIdAndDomainParams) (*HelixWorker, error) {
+	row := q.queryRow(ctx, q.getWorkerByWorkerIdAndDomainStmt, getWorkerByWorkerIdAndDomain, arg.Domain, arg.WorkerID)
+	var i HelixWorker
+	err := row.Scan(
+		&i.ID,
+		&i.WorkerID,
+		&i.Domain,
+		&i.Status,
+		&i.CreatedAt,
+		&i.LastHeartbeatAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
 const getWorkerStatus = `-- name: GetWorkerStatus :one
 SELECT status
 FROM helix_workers

@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getWorkerStmt, err = db.PrepareContext(ctx, getWorker); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWorker: %w", err)
 	}
+	if q.getWorkerByWorkerIdAndDomainStmt, err = db.PrepareContext(ctx, getWorkerByWorkerIdAndDomain); err != nil {
+		return nil, fmt.Errorf("error preparing query GetWorkerByWorkerIdAndDomain: %w", err)
+	}
 	if q.getWorkerStatusStmt, err = db.PrepareContext(ctx, getWorkerStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWorkerStatus: %w", err)
 	}
@@ -60,6 +63,11 @@ func (q *Queries) Close() error {
 	if q.getWorkerStmt != nil {
 		if cerr := q.getWorkerStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getWorkerStmt: %w", cerr)
+		}
+	}
+	if q.getWorkerByWorkerIdAndDomainStmt != nil {
+		if cerr := q.getWorkerByWorkerIdAndDomainStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getWorkerByWorkerIdAndDomainStmt: %w", cerr)
 		}
 	}
 	if q.getWorkerStatusStmt != nil {
@@ -114,25 +122,27 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                              DBTX
-	tx                              *sql.Tx
-	deregisterWorkerStmt            *sql.Stmt
-	getAllActiveWorkersByDomainStmt *sql.Stmt
-	getWorkerStmt                   *sql.Stmt
-	getWorkerStatusStmt             *sql.Stmt
-	registerWorkerStmt              *sql.Stmt
-	sendHeartbeatStmt               *sql.Stmt
+	db                               DBTX
+	tx                               *sql.Tx
+	deregisterWorkerStmt             *sql.Stmt
+	getAllActiveWorkersByDomainStmt  *sql.Stmt
+	getWorkerStmt                    *sql.Stmt
+	getWorkerByWorkerIdAndDomainStmt *sql.Stmt
+	getWorkerStatusStmt              *sql.Stmt
+	registerWorkerStmt               *sql.Stmt
+	sendHeartbeatStmt                *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                              tx,
-		tx:                              tx,
-		deregisterWorkerStmt:            q.deregisterWorkerStmt,
-		getAllActiveWorkersByDomainStmt: q.getAllActiveWorkersByDomainStmt,
-		getWorkerStmt:                   q.getWorkerStmt,
-		getWorkerStatusStmt:             q.getWorkerStatusStmt,
-		registerWorkerStmt:              q.registerWorkerStmt,
-		sendHeartbeatStmt:               q.sendHeartbeatStmt,
+		db:                               tx,
+		tx:                               tx,
+		deregisterWorkerStmt:             q.deregisterWorkerStmt,
+		getAllActiveWorkersByDomainStmt:  q.getAllActiveWorkersByDomainStmt,
+		getWorkerStmt:                    q.getWorkerStmt,
+		getWorkerByWorkerIdAndDomainStmt: q.getWorkerByWorkerIdAndDomainStmt,
+		getWorkerStatusStmt:              q.getWorkerStatusStmt,
+		registerWorkerStmt:               q.registerWorkerStmt,
+		sendHeartbeatStmt:                q.sendHeartbeatStmt,
 	}
 }

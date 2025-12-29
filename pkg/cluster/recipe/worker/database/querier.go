@@ -31,6 +31,13 @@ type Querier interface {
 	//  WHERE worker_id = ?
 	//    AND domain = ?
 	GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorkerRow, error)
+	//GetWorkerByWorkerIdAndDomain
+	//
+	//  SELECT id, worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+	//  FROM helix_workers
+	//  WHERE domain = ?
+	//    and worker_id = ?
+	GetWorkerByWorkerIdAndDomain(ctx context.Context, arg GetWorkerByWorkerIdAndDomainParams) (*HelixWorker, error)
 	//GetWorkerStatus
 	//
 	//  SELECT status
