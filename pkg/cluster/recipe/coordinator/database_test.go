@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"os"
 	"sort" // Added import for sort package
 	"testing"
@@ -51,8 +52,8 @@ func (s *CoordinatorDataLayerTestSuite) SetupTest() {
 }
 
 func (s *CoordinatorDataLayerTestSuite) TestGetActivePartitionMappings() {
-	domain := "dev-automation-test-domain"
-	tasklist := "dev-automation-test-tasklist"
+	domain := uuid.NewString()
+	tasklist := uuid.NewString()
 	ctx := context.Background()
 
 	// Arrange: Insert test data using explicit status values for clarity

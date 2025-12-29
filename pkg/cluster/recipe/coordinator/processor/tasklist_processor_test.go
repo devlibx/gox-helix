@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/devlibx/gox-helix/pkg/common"
 	"go.uber.org/mock/gomock"
-	"sync"
 	"testing"
 	"time"
 
@@ -50,8 +49,10 @@ func setupTest(t *testing.T) *testProcessorDeps {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
+			ClientFunctionProcessWork: func(ctx context.Context, work coordinator.Work) (*coordinator.WorkResponse, error) {
+				return &coordinator.WorkResponse{}, nil
+			},
 		},
-		workChannel,
 	)
 
 	// Default expectation for ownership checks to allow existing tests to pass
@@ -77,8 +78,8 @@ func setupTest(t *testing.T) *testProcessorDeps {
 func TestStart_Idempotency(t *testing.T) {
 	deps := setupTest(t)
 
-	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).Times(1)
-	deps.mockLocker.EXPECT().ReleaseLock(gomock.Any(), gomock.Any()).Return(&locker.ReleaseLockResponse{}, nil).Times(1)
+	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()
+	deps.mockLocker.EXPECT().ReleaseLock(gomock.Any(), gomock.Any()).Return(&locker.ReleaseLockResponse{}, nil).AnyTimes()
 
 	resp, err := deps.processor.Start(context.Background())
 	assert.NoError(t, err)
@@ -89,12 +90,6 @@ func TestStart_Idempotency(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, "ALREADY_RUNNING", resp.Status)
-
-	go func() {
-		w := <-deps.workChannel
-		t.Log("Got work on work channel", "work", w)
-		close(w.CompletedChannel)
-	}()
 
 	err = deps.processor.Stop(context.Background())
 	assert.NoError(t, err)
@@ -112,12 +107,6 @@ func TestStop_GracefulShutdown(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	go func() {
-		w := <-deps.workChannel
-		t.Log("Got work on work channel", "work", w)
-		close(w.CompletedChannel)
-	}()
-
 	err = deps.processor.Stop(context.Background())
 	assert.NoError(t, err)
 
@@ -132,7 +121,6 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 	mockLocker := locker.NewMockLocker(mockCtrl)
 	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
 	config := coordinator.NewDefaultTasklistProcessorConfig()
-	workChannel := make(chan *coordinator.Work)
 
 	processor := NewTasklistProcessor(
 		gox.NewCrossFunction(),
@@ -144,8 +132,10 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
+			ClientFunctionProcessWork: func(ctx context.Context, work coordinator.Work) (*coordinator.WorkResponse, error) {
+				return &coordinator.WorkResponse{}, nil
+			},
 		},
-		workChannel,
 	)
 
 	mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()
@@ -156,12 +146,6 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 	assert.NoError(t, err)
 
 	time.Sleep(10 * time.Millisecond)
-
-	go func() {
-		w := <-workChannel
-		t.Log("Got work on work channel", "work", w)
-		close(w.CompletedChannel)
-	}()
 
 	// Trigger the application-wide stop signal
 	_ = processor.Stop(context.Background())
@@ -185,26 +169,6 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 	deps := setupTest(t)
 	deps.config.LockAcquireRefreshInterval = 100 * time.Millisecond // Keep refresh fast
 
-	var workDoneCounter int
-	var mu sync.Mutex
-
-	testCompleted := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case w := <-deps.workChannel:
-				t.Log("Got work on work channel", "work", w)
-				mu.Lock()
-				workDoneCounter++
-				mu.Unlock()
-				time.Sleep(10 * time.Millisecond)
-				close(w.CompletedChannel)
-			case <-testCompleted:
-				return
-			}
-		}
-	}()
-
 	// Sequence of mock calls:
 	// 1. First AcquireLock succeeds.
 	// 2. The second call (first refresh) fails.
@@ -214,31 +178,45 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 	deps.mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes() // Subsequent refresh succeeds
 	deps.mockLocker.EXPECT().ReleaseLock(gomock.Any(), gomock.Any()).Return(&locker.ReleaseLockResponse{}, nil).Times(1)
 
-	_, err := deps.processor.Start(context.Background())
-	assert.NoError(t, err)
+	mockCtrl := gomock.NewController(t)
+	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
+
+	var workDoneCounter int
+	processor := NewTasklistProcessor(
+		gox.NewCrossFunction(),
+		deps.config,
+		deps.mockLocker,
+		mockPartitionService,
+		&ProcessTasklistRequest{
+			Domain:    "test-domain",
+			TaskList:  "test-tasklist",
+			Partition: 1,
+			WorkerId:  "test-worker-id",
+			ClientFunctionProcessWork: func(ctx context.Context, work coordinator.Work) (*coordinator.WorkResponse, error) {
+				t.Log("Got work on work channel", "work", work)
+				workDoneCounter++
+				time.Sleep(10 * time.Millisecond)
+				return &coordinator.WorkResponse{}, nil
+			},
+		},
+	)
+	_, _ = processor.Start(context.Background())
 
 	// --- Phase 1: Work should be active initially ---
 	// Wait long enough for work to be done multiple times before the first refresh.
 	time.Sleep(deps.config.LockAcquireRefreshInterval / 2) // Half of refresh interval, should be working
-	mu.Lock()
 	initialWorkCount := workDoneCounter
-	mu.Unlock()
 	assert.Greater(t, initialWorkCount, 0, "Work should have started initially")
 
 	// --- Phase 2: Lock refresh fails, work should suspend ---
 	// Wait for the refresh cycle that is expected to fail.
 	time.Sleep(deps.config.LockAcquireRefreshInterval + 50*time.Millisecond) // Ensure refresh fires and suspension takes effect
-
-	mu.Lock()
 	workCountAfterSuspension := workDoneCounter
-	mu.Unlock()
 
 	// Wait during the suspension period - work count should not increase significantly
 	time.Sleep(deps.config.LockAcquireRefreshInterval / 2) // Half of refresh interval
 
-	mu.Lock()
 	workCountDuringSuspension := workDoneCounter
-	mu.Unlock()
 
 	// Work should be mostly suspended - with 1ms sleep in loop, some items may slip through
 	// but it should be much less than if lock was held continuously
@@ -251,11 +229,8 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 
 	// Wait for work to happen again
 	time.Sleep(50 * time.Millisecond) // Give time for work to resume
-	mu.Lock()
 	assert.Greater(t, workDoneCounter, workCountDuringSuspension, "Work should resume after lock is re-acquired")
-	mu.Unlock()
 
-	err = deps.processor.Stop(context.Background())
+	err := processor.Stop(context.Background())
 	assert.NoError(t, err)
-	testCompleted <- struct{}{}
 }

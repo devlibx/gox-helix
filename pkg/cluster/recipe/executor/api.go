@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
 	"github.com/devlibx/gox-helix/pkg/common/config"
@@ -38,6 +39,9 @@ type serviceImpl struct {
 	partitionService             coordinator.PartitionService
 	domainService                domain.Service
 	PartitionDistributionService coordinator.PartitionDistributionService
+	ProcessorFactory             processor.Factory
+
+	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
 }
 
 func (s *serviceImpl) GetWorkerId() string {
@@ -52,6 +56,8 @@ func NewExecutor(
 	domainService domain.Service,
 	partitionService coordinator.PartitionService,
 	PartitionDistributionService coordinator.PartitionDistributionService,
+	ProcessorFactory processor.Factory,
+	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork,
 ) (Service, error) {
 	s := &serviceImpl{
 		CrossFunction:                cf,
@@ -61,6 +67,8 @@ func NewExecutor(
 		domainService:                domainService,
 		partitionService:             partitionService,
 		PartitionDistributionService: PartitionDistributionService,
+		ProcessorFactory:             ProcessorFactory,
+		ClientFunctionProcessWork:    ClientFunctionProcessWork,
 		workerId:                     uuid.NewString(),
 	}
 	return s, nil

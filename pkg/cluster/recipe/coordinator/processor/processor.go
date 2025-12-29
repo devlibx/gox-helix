@@ -11,9 +11,10 @@ import (
 )
 
 type CreateDomainTasklistProcessorRequest struct {
-	Domain   string
-	TaskList string
-	WorkerId string
+	Domain                    string
+	TaskList                  string
+	WorkerId                  string
+	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
 }
 
 type Factory interface {
@@ -42,9 +43,10 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, re
 			f.lockService,
 			f.partitionService,
 			&DomainTasklistProcessorCfg{
-				Domain:   request.Domain,
-				TaskList: request.TaskList,
-				WorkerId: request.WorkerId,
+				Domain:                    request.Domain,
+				TaskList:                  request.TaskList,
+				WorkerId:                  request.WorkerId,
+				ClientFunctionProcessWork: request.ClientFunctionProcessWork,
 			},
 		)
 	}

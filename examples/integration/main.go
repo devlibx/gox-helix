@@ -20,6 +20,7 @@ import (
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/fx"
+	"log/slog"
 	"time"
 )
 
@@ -63,6 +64,14 @@ func main() {
 		fx.Invoke(NewCleanupOnBootupProvider),
 		fx.Invoke(executor.NewExecutorLifecycle),
 
+		fx.Provide(func() coordinator.ClientFunctionProcessWork {
+			return func(ctx context.Context, work coordinator.Work) (*coordinator.WorkResponse, error) {
+				slog.Info("Got work to do", "work", work)
+				time.Sleep(10 * time.Second)
+				return &coordinator.WorkResponse{}, nil
+			}
+		}),
+
 		fx.Populate(
 			&appCtx.DomainDataLayer,
 			&appCtx.WorkerDataLayer,
@@ -75,19 +84,6 @@ func main() {
 	err = app.Start(ctx)
 	if err != nil {
 		panic(err)
-	}
-
-	for _, domainObj := range appConfig.Domains {
-		for _, tl := range domainObj.TaskLists {
-			_, _ = appCtx.ProcessorFactory.GetOrCreateDomainTasklistProcessor(
-				ctx,
-				processor.CreateDomainTasklistProcessorRequest{
-					Domain:   domainObj.Name,
-					TaskList: tl.Name,
-					WorkerId: appCtx.ExecutorService.GetWorkerId(),
-				},
-			)
-		}
 	}
 
 	time.Sleep(30 * time.Minute)
