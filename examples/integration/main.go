@@ -18,6 +18,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"go.uber.org/fx"
 	"log/slog"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,6 +40,7 @@ func main() {
 	defer cancel()
 	appSignal := pkgCommon.NewApplicationSingletonWithContext(ctx)
 
+	var count int64
 	appCtx := &common.ApplicationCtx{}
 	app := fx.New(
 
@@ -65,7 +67,9 @@ func main() {
 
 		fx.Provide(func() coordinator.ClientFunctionProcessWork {
 			return func(ctx context.Context, work coordinator.Work) (*coordinator.WorkResponse, error) {
-				slog.Info("Got work to do", "work", work)
+				if atomic.AddInt64(&count, 1)%10 == 0 {
+					slog.Info("Got work to do", "work", work)
+				}
 				time.Sleep(10 * time.Second)
 				return &coordinator.WorkResponse{}, nil
 			}

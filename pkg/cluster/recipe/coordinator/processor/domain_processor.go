@@ -5,6 +5,7 @@ import (
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"log/slog"
 	"sync"
 )
@@ -17,6 +18,7 @@ type domainTasklistProcessorImpl struct {
 	activePartitions      []int
 	activePartitionsMutex *sync.Mutex
 	tasklistProcessor     map[int]coordinator.TasklistProcessor
+	applicationSingleton  *common.ApplicationSingleton
 }
 
 func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coordinator.DomainTasklistProcessRequest) (*coordinator.DomainTasklistProcessResponse, error) {
@@ -75,6 +77,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 					WorkerId:                  d.config.WorkerId,
 					ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
 				},
+				d.applicationSingleton,
 			)
 		}
 		if _, err := d.tasklistProcessor[partition].Start(context.Background()); err != nil {
@@ -118,6 +121,7 @@ func NewDomainTasklistProcessor(
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 	cfg *DomainTasklistProcessorCfg,
+	applicationSingleton *common.ApplicationSingleton,
 ) coordinator.DomainTasklistProcessor {
 	p := &domainTasklistProcessorImpl{
 		CrossFunction:         cf,
@@ -127,6 +131,7 @@ func NewDomainTasklistProcessor(
 		activePartitions:      make([]int, 0),
 		tasklistProcessor:     make(map[int]coordinator.TasklistProcessor),
 		activePartitionsMutex: &sync.Mutex{},
+		applicationSingleton:  applicationSingleton,
 	}
 	return p
 }
