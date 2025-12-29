@@ -33,3 +33,11 @@ SELECT worker_id
 FROM helix_workers
 WHERE domain = ?
   and status = 1;
+
+
+-- name: GetWorkerByWorkerIdAndDomain :one
+SELECT *
+FROM helix_workers
+WHERE domain = ?
+  and worker_id = ?;
+

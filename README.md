@@ -76,7 +76,48 @@ fx.Provide(func() coordinator.ClientFunctionProcessWork {
 ```
 - This function is provided to the `fx` container.
 - It receives a `coordinator.Work` object that contains information about the task.
-- The work is processed asynchronously, and upon completion, a `coordinator.WorkResponse{}` is sent to the `work.CompletedChannel`.
+- The actual work is executed within a goroutine, one for each partition assigned to the worker.
+- **Important:** You *must* send a `coordinator.WorkResponse{}` to `work.CompletedChannel` when your processing for a given `work` item is complete. Failure to do so will block the process from picking up the next task.
+- It is possible for the client to do any necessary work in this callback. To ensure efficient partition rebalancing and prevent two partitions from working on the same partition concurrently, try to keep the processing time within this function short (ideally < 100ms). For example, if you poll work from a database, you can run a busy loop to read from the database for 100-200ms and then acknowledge the channel. This strategy allows the partition to be safely reassigned if the worker goes down.
+
+## Example Configuration
+
+The example uses the following `config.yaml` to define domains and task lists:
+
+```yaml
+domains:
+  mobility:
+    worker_count_to_process_domain: 4
+    task_list:
+      booking:
+        partition_count: 4
+      allocation:
+        partition_count: 4
+      refund:
+        partition_count: 8
+  food:
+    worker_count_to_process_domain: 2
+    task_list:
+      driver_allocation:
+        partition_count: 3
+      driver_pickup:
+        partition_count: 6
+      delivered:
+        partition_count: 9
+```
+
+## Worker-Partition Mapping Example
+
+The `gox-helix` framework dynamically allocates partitions to available workers. If there are multiple workers running, the partitions will be split among them to distribute the workload. The following example shows how partitions (represented by the `[...,0]` array) are mapped to a worker. In this specific example, there is only one worker, so the `worker_id` (`177e9c39-8e69-482a-a677-9e41e91d67a1`) is the same for all entries.
+
+```
+'1', 'food', 'driver_allocation', '177e9c39-8e69-482a-a677-9e41e91d67a1', '1', '[1,2,0]'
+'2', 'mobility', 'allocation', '177e9c39-8e69-482a-a677-9e41e91d67a1', '1', '[1,2,3,0]'
+'4', 'food', 'delivered', '177e9c39-8e69-482a-a677-9e41e91d67a1', '1', '[3,7,8,1,4,6,5,2,0]'
+'8', 'mobility', 'booking', '177e9c39-8e69-482a-a677-9e41e91d67a1', '1', '[1,2,3,0]'
+'9', 'food', 'driver_pickup', '177e9c39-8e69-482a-a677-9e41e91d67a1', '1', '[2,3,4,5,0,1]'
+'10', 'mobility', 'refund', '177e9c39-8e69-482a-a677-9e41e91d67a1', '1', '[6,7,0,1,2,3,4,5]'
+```
 
 ## How to Run
 
