@@ -56,7 +56,8 @@ SELECT /*+ MAX_EXECUTION_TIME(1000) */
 FROM helix_worker_partition_mapping
 WHERE domain = ?
   AND tasklist = ?
-  AND status in (1, 2);
+  AND status in (1, 2) FOR
+UPDATE;
 
 
 -- name: GetValidPartitionByOwnerId :many

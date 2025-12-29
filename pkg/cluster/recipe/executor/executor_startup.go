@@ -34,7 +34,7 @@ func (s *serviceImpl) Start(ctx context.Context) error {
 }
 
 func (s *serviceImpl) registerDomainWorkerOnStart(ctx context.Context, domain *config.Domain) error {
-	if err := s.workerDataLayer.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
+	if err := s.workerDataLayer.Querier.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
 		WorkerID:        s.workerId,
 		Domain:          domain.Name,
 		CreatedAt:       s.Now(),

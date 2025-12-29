@@ -11,6 +11,7 @@ import (
 type DataLayer struct {
 	gox.CrossFunction
 	helixWorkerMysql.Querier
+	*helixWorkerMysql.Queries
 }
 
 func NewWorkerDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder) (*DataLayer, error) {
@@ -21,5 +22,6 @@ func NewWorkerDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder
 	return &DataLayer{
 		CrossFunction: cf,
 		Querier:       q,
+		Queries:       q,
 	}, err
 }
