@@ -5,13 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/devlibx/gox-helix/pkg/common"
+	"github.com/devlibx/gox-helix"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
 	"os"
 	"testing"
 
 	"github.com/devlibx/gox-base/v2"
-	"github.com/devlibx/gox-helix"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
+	"github.com/devlibx/gox-helix/pkg/common"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/suite"
@@ -19,16 +21,18 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-type PartitionDistributorTestSuite struct {
+type PartitionDistributorV1TestSuite struct {
 	suite.Suite
-	dataLayer       *DataLayer
-	db              *sql.DB
-	mockDistributor *MockDistributorStrategy
-	mockCtrl        *gomock.Controller
-	service         *PartitionDistributionServiceImpl // Use the concrete implementation for testing
+	coordinatorDataLayer *DataLayer
+	workerDataLayer      *worker.DataLayer
+	domainDataLayer      *domain.DataLayer
+	db                   *sql.DB
+	mockDistributor      *MockDistributorStrategy
+	mockCtrl             *gomock.Controller
+	service              *PartitionDistributionServiceImpl
 }
 
-func (s *PartitionDistributorTestSuite) SetupSuite() {
+func (s *PartitionDistributorV1TestSuite) SetupSuite() {
 	if os.Getenv("INTEGRATION_TESTS") != "true" {
 		s.T().Skip("Skipping integration tests: Set INTEGRATION_TESTS=true to run")
 	}
@@ -44,98 +48,140 @@ func (s *PartitionDistributorTestSuite) SetupSuite() {
 			return sql.Open("mysql", helix.GetDefaultSqlUrl())
 		}),
 		fx.Provide(func() *common.ApplicationSingleton {
-			return common.NewApplicationSingletonWithContext(context.Background())
+			as := common.NewApplicationSingletonWithContext(context.Background())
+			return as
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 		fx.Provide(NewCoordinatorDataLayer),
-		fx.Provide(locker.NewLockerDataLayer), // Provide real locker dependencies
+		fx.Provide(worker.NewWorkerDataLayer),
+		fx.Provide(domain.NewDomainDataLayer),
+		fx.Provide(locker.NewLockerDataLayer),
 		fx.Provide(locker.NewLocker),
-		fx.Provide(func() DistributorStrategy { return s.mockDistributor }), // Provide the mock distributor
+		fx.Provide(func() DistributorStrategy { return s.mockDistributor }),
 		fx.Provide(func(dataLayer *DataLayer) PartitionService { return dataLayer }),
-		// Provide the concrete struct, not the interface
-		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService, as *common.ApplicationSingleton) (*PartitionDistributionServiceImpl, error) {
-			p, err := NewPartitionDistributionService(lockService, distributor, partitionService, as)
+		fx.Provide(func(
+			lockService locker.Locker,
+			distributor DistributorStrategy,
+			partitionService PartitionService,
+			applicationSingleton *common.ApplicationSingleton,
+			workerDataLayer *worker.DataLayer,
+			coordinatorDataLayer *DataLayer,
+			domainDataLayer *domain.DataLayer,
+			ch databaseCommon.ConnectionHolder,
+		) (*PartitionDistributionServiceImpl, error) {
+			p, err := NewPartitionDistributionService(
+				lockService,
+				distributor,
+				partitionService,
+				applicationSingleton,
+				workerDataLayer,
+				coordinatorDataLayer,
+				domainDataLayer,
+				distributor, // Pass mock distributor again for the unused field
+				ch,
+			)
 			return p.(*PartitionDistributionServiceImpl), err
 		}),
-		fx.Populate(&s.dataLayer, &s.db, &s.service),
+		fx.Populate(
+			&s.coordinatorDataLayer,
+			&s.workerDataLayer,
+			&s.domainDataLayer,
+			&s.db,
+			&s.service,
+		),
 	)
 
 	err := app.Start(context.Background())
 	s.Require().NoError(err, "fx app failed to start")
 }
 
-func (s *PartitionDistributorTestSuite) SetupTest() {
-	// Clean the table before each test
-	_, err := s.db.Exec("DELETE FROM helix_worker_partition_mapping WHERE domain like 'dev-automation-%'")
-	s.Require().NoError(err)
-	_, err = s.db.Exec("DELETE FROM helix_domain WHERE domain like 'dev-automation-%'")
-	s.Require().NoError(err)
+func (s *PartitionDistributorV1TestSuite) SetupTest() {
+	tables := []string{"helix_worker_partition_mapping", "helix_domain", "helix_workers", "helix_locks"}
+	for _, table := range tables {
+		_, err := s.db.Exec(fmt.Sprintf("DELETE FROM %s", table))
+		s.Require().NoError(err)
+	}
 }
 
-func (s *PartitionDistributorTestSuite) TearDownSuite() {
+func (s *PartitionDistributorV1TestSuite) TearDownSuite() {
 	s.mockCtrl.Finish()
 }
 
-func (s *PartitionDistributorTestSuite) TestInternalProcess_ColdStart() {
+func (s *PartitionDistributorV1TestSuite) TestInternalProcess_ColdStart() {
 	domainName := "dev-automation-cold-start-domain"
 	tasklist := "dev-automation-cold-start-tasklist"
 	ctx := context.Background()
 
 	// 1. Arrange: Mock the distributor to return a new assignment
 	coldStartResponse := &DistributionResponse{
+		DomainName: domainName,
+		TaskList:   tasklist,
 		Mapping: map[int]DistributionMapping{
-			0: {OwnerId: "worker-A"}, 1: {OwnerId: "worker-A"}, 2: {OwnerId: "worker-A"},
-			3: {OwnerId: "worker-B"}, 4: {OwnerId: "worker-B"},
+			0: {OwnerId: "worker-A", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			1: {OwnerId: "worker-A", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			2: {OwnerId: "worker-A", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			3: {OwnerId: "worker-B", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			4: {OwnerId: "worker-B", Status: databaseCommon.PartitionAssignmentStatusAssigned},
 		},
 	}
 	s.mockDistributor.EXPECT().Distribute(gomock.Any(), gomock.Any()).Return(coldStartResponse, nil)
 
 	// 2. Act: Run the internal process
 	request := DistributionRequest{DomainName: domainName, TaskList: tasklist}
-	err := s.service.internalProcess(ctx, request) // Call the unexported method
+	err := s.service.internalProcess(ctx, request)
 	s.Require().NoError(err)
 
 	// 3. Assert: Verify the database state
-	s.verifyDbState(ctx, domainName, tasklist, coldStartResponse, 5)
+	s.verifyDbState(ctx, domainName, tasklist, coldStartResponse, 5, 2)
 }
 
-func (s *PartitionDistributorTestSuite) TestInternalProcess_Rebalance() {
+func (s *PartitionDistributorV1TestSuite) TestInternalProcess_Rebalance() {
 	domainName := "dev-automation-rebalance-domain"
 	tasklist := "dev-automation-rebalance-tasklist"
 	ctx := context.Background()
 
-	// 1. Arrange: Seed an initial state
-	s.seedPartition(ctx, domainName, tasklist, "worker-A", []int{0, 1, 2, 3, 4}, 1) // 5 partitions
+	// 1. Arrange: Seed an initial state with 3 workers
+	s.seedPartition(ctx, domainName, tasklist, "worker-A", []int{0, 1}, 1)
+	s.seedPartition(ctx, domainName, tasklist, "worker-B", []int{2, 3}, 1)
+	s.seedPartition(ctx, domainName, tasklist, "worker-C", []int{4, 5}, 1) // worker-C will be removed
 
-	// 2. Arrange: Mock the distributor to return a rebalanced assignment
+	// 2. Arrange: Mock the distributor for rebalancing (worker-C's partitions go to A and B)
 	rebalanceResponse := &DistributionResponse{
+		DomainName: domainName,
+		TaskList:   tasklist,
 		Mapping: map[int]DistributionMapping{
-			0: {OwnerId: "worker-A"}, 1: {OwnerId: "worker-A"}, // worker-A loses 3 partitions
-			2: {OwnerId: "worker-B"}, 3: {OwnerId: "worker-B"}, 4: {OwnerId: "worker-B"}, // worker-B gets 3
+			0: {OwnerId: "worker-A", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			1: {OwnerId: "worker-A", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			2: {OwnerId: "worker-B", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			3: {OwnerId: "worker-B", Status: databaseCommon.PartitionAssignmentStatusAssigned},
+			4: {OwnerId: "worker-A", Status: databaseCommon.PartitionAssignmentStatusAssigned}, // Re-assigned
+			5: {OwnerId: "worker-B", Status: databaseCommon.PartitionAssignmentStatusAssigned}, // Re-assigned
 		},
 	}
 	s.mockDistributor.EXPECT().Distribute(gomock.Any(), gomock.Any()).Return(rebalanceResponse, nil)
 
 	// 3. Act: Run the internal process
 	request := DistributionRequest{DomainName: domainName, TaskList: tasklist}
-	err := s.service.internalProcess(ctx, request) // Call the unexported method
+	err := s.service.internalProcess(ctx, request)
 	s.Require().NoError(err)
 
 	// 4. Assert: Verify the new database state
-	s.verifyDbState(ctx, domainName, tasklist, rebalanceResponse, 5)
+	s.verifyDbState(ctx, domainName, tasklist, rebalanceResponse, 6, 2)
 
-	// 4.1 Assert: Check that worker-A's record was updated and not just re-inserted
-	var count int
-	err = s.db.QueryRow("SELECT count(*) FROM helix_worker_partition_mapping WHERE domain=? AND tasklist=? AND status=1", domainName, tasklist).Scan(&count)
+	// 5. Assert: Check that worker-C's old record is now inactive
+	var status int8
+	err = s.db.QueryRow("SELECT status FROM helix_worker_partition_mapping WHERE domain=? AND tasklist=? AND owner_id=?", domainName, tasklist, "worker-C").Scan(&status)
 	s.Require().NoError(err)
-	s.Equal(2, count, "Should only have 2 active worker rows in the DB")
+	s.Equal(int8(0), status, "worker-C's record should be marked inactive")
 }
 
 // verifyDbState is a helper to read data back and check for consistency
-func (s *PartitionDistributorTestSuite) verifyDbState(ctx context.Context, domain, tasklist string, expected *DistributionResponse, partitionCount int) {
+func (s *PartitionDistributorV1TestSuite) verifyDbState(ctx context.Context, domain, tasklist string, expected *DistributionResponse, partitionCount, expectedWorkerCount int) {
 	// Read the data back using the real DataLayer
-	mappings, err := s.dataLayer.GetActivePartitionMappings(ctx, domain, tasklist)
+	mappings, err := s.coordinatorDataLayer.GetActivePartitionMappings(ctx, domain, tasklist)
 	s.Require().NoError(err)
+
+	s.Len(mappings, expectedWorkerCount, "should have the correct number of active worker rows")
 
 	// Flatten the result into a map[partition]owner for easy comparison
 	persistedState := make(map[int]string)
@@ -161,21 +207,14 @@ func (s *PartitionDistributorTestSuite) verifyDbState(ctx context.Context, domai
 	}
 }
 
-func (s *PartitionDistributorTestSuite) seedPartition(ctx context.Context, domain, tasklist, ownerId string, partitions []int, status int8) {
+func (s *PartitionDistributorV1TestSuite) seedPartition(ctx context.Context, domain, tasklist, ownerId string, partitions []int, status int8) {
 	metadata, err := json.Marshal(partitions)
 	s.Require().NoError(err)
 	q := `INSERT INTO helix_worker_partition_mapping(domain, tasklist, owner_id, metadata, status) VALUES (?, ?, ?, ?, ?)`
 	_, err = s.db.ExecContext(ctx, q, domain, tasklist, ownerId, string(metadata), status)
 	s.Require().NoError(err, fmt.Sprintf("failed to seed partition for owner %s", ownerId))
-
-	// Also ensure a domain exists for these tests
-	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO helix_domain (domain, tasklist, partition_count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE partition_count=VALUES(partition_count)`,
-		domain, tasklist, 10,
-	)
-	s.Require().NoError(err)
 }
 
-func TestPartitionDistributor(t *testing.T) {
-	suite.Run(t, new(PartitionDistributorTestSuite))
+func TestPartitionDistributorV1(t *testing.T) {
+	suite.Run(t, new(PartitionDistributorV1TestSuite))
 }
