@@ -17,8 +17,8 @@ import (
 // It embeds the sqlc-generated concrete Queries struct and implements the PartitionService interface.
 type DataLayer struct {
 	gox.CrossFunction
-	*helixCoordinatorMysql.Queries // Embed the concrete Queries struct
-	db                             *sql.DB
+	*helixCoordinatorMysql.Queries
+	db *sql.DB
 }
 
 // NewCoordinatorDataLayer creates a new DataLayer for the coordinator.
@@ -40,11 +40,16 @@ func NewCoordinatorDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionH
 
 // GetActivePartitionMappings implements the PartitionService interface.
 func (d *DataLayer) GetActivePartitionMappings(ctx context.Context, domain string, tasklist string) ([]WorkerPartitionMapping, error) {
+	q := d.Queries
+	if queriesFromCtx, ok := ctx.Value("*helixCoordinatorMysql.Queries").(*helixCoordinatorMysql.Queries); ok {
+		q = queriesFromCtx
+	}
+
 	params := helixCoordinatorMysql.GetAllValidPartitionForDomainAndTaskListParams{
 		Domain:   domain,
 		Tasklist: tasklist,
 	}
-	dbMappings, err := d.GetAllValidPartitionForDomainAndTaskList(ctx, params)
+	dbMappings, err := q.GetAllValidPartitionForDomainAndTaskList(ctx, params)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []WorkerPartitionMapping{}, nil

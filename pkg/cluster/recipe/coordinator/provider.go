@@ -9,6 +9,7 @@ import (
 
 var Provider = fx.Options(
 
+	// fx.Provide(NewPartitionDistributionService),
 	fx.Provide(NewPartitionDistributionService),
 	fx.Provide(NewCoordinatorDataLayer),
 

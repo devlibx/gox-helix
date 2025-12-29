@@ -68,7 +68,8 @@ SELECT /*+ MAX_EXECUTION_TIME(1000) */
 FROM helix_worker_partition_mapping
 WHERE domain = ?
   AND tasklist = ?
-  AND status in (1, 2)
+  AND status in (1, 2) FOR
+UPDATE
 `
 
 type GetAllValidPartitionForDomainAndTaskListParams struct {
@@ -83,7 +84,8 @@ type GetAllValidPartitionForDomainAndTaskListParams struct {
 //	FROM helix_worker_partition_mapping
 //	WHERE domain = ?
 //	  AND tasklist = ?
-//	  AND status in (1, 2)
+//	  AND status in (1, 2) FOR
+//	UPDATE
 func (q *Queries) GetAllValidPartitionForDomainAndTaskList(ctx context.Context, arg GetAllValidPartitionForDomainAndTaskListParams) ([]*HelixWorkerPartitionMapping, error) {
 	rows, err := q.query(ctx, q.getAllValidPartitionForDomainAndTaskListStmt, getAllValidPartitionForDomainAndTaskList, arg.Domain, arg.Tasklist)
 	if err != nil {

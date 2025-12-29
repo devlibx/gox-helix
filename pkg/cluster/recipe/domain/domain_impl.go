@@ -31,7 +31,7 @@ func (s *domainImpl) Start(ctx context.Context) error {
 				slog.Warn("tasklist is disabled", "domain", d.Name, "tasklist", tl.Name)
 				continue
 			}
-			if err := s.dataLayer.UpsertTasklist(ctx, helixDomainMysql.UpsertTasklistParams{
+			if err := s.dataLayer.Querier.UpsertTasklist(ctx, helixDomainMysql.UpsertTasklistParams{
 				Domain:         d.Name,
 				Tasklist:       tl.Name,
 				Metadata:       sql.NullString{Valid: true, String: `{}`},

@@ -14,10 +14,13 @@ type ApplicationSingleton struct {
 	logger                   *slog.Logger
 	applicationCtxStopOnce   *sync.Once
 	loggers                  map[string]*slog.Logger
+	loggersMutex             *sync.Mutex
 }
 
 func (app *ApplicationSingleton) GetModuleLogger(name string) *slog.Logger {
 	logger := app.logger.With("module", name)
+	app.loggersMutex.Lock()
+	defer app.loggersMutex.Unlock()
 	app.loggers[name] = logger
 	return logger
 }
@@ -50,5 +53,6 @@ func NewApplicationSingletonWithContext(ctx context.Context) *ApplicationSinglet
 		logger:                   slog.With("app", "gox-helix").With("worker_id", workerId),
 		applicationCtxStopOnce:   &sync.Once{},
 		loggers:                  make(map[string]*slog.Logger),
+		loggersMutex:             &sync.Mutex{},
 	}
 }

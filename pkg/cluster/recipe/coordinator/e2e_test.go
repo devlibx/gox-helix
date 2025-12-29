@@ -67,9 +67,9 @@ func (s *E2ETestSuite) SetupSuite() {
 
 		// Distribution
 		fx.Provide(NewDistributorStrategy),
-		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService, as *common.ApplicationSingleton) (*PartitionDistributionServiceImpl, error) {
-			p, err := NewPartitionDistributionService(lockService, distributor, partitionService, as)
-			return p.(*PartitionDistributionServiceImpl), err
+		fx.Provide(NewPartitionDistributionService),
+		fx.Provide(func(p PartitionDistributionService) *PartitionDistributionServiceImpl {
+			return p.(*PartitionDistributionServiceImpl)
 		}),
 
 		fx.Populate(&s.db, &s.partitionService, &s.partitionDistributor, &s.workerDataLayer, &s.domainDataLayer),
@@ -96,7 +96,7 @@ func (s *E2ETestSuite) TestEndToEndDistribution() {
 	ctx := context.Background()
 
 	// 1. Register domain
-	err := s.domainDataLayer.UpsertTasklist(ctx, helixDomainMysql.UpsertTasklistParams{
+	err := s.domainDataLayer.Querier.UpsertTasklist(ctx, helixDomainMysql.UpsertTasklistParams{
 		Domain:         domainName,
 		Tasklist:       tasklist,
 		Metadata:       sql.NullString{Valid: true, String: `{}`},
@@ -106,7 +106,7 @@ func (s *E2ETestSuite) TestEndToEndDistribution() {
 
 	// 2. Register workers
 	for i := 0; i < workerCount; i++ {
-		err := s.workerDataLayer.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
+		err := s.workerDataLayer.Querier.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
 			WorkerID:        fmt.Sprintf("worker-%d", i),
 			Domain:          domainName,
 			CreatedAt:       s.workerDataLayer.Now(),
