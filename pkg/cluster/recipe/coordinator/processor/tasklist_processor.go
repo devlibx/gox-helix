@@ -73,7 +73,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*coordinator.Tasklis
 	t.mutex.Lock()
 	if t.running {
 		t.mutex.Unlock()
-		slog.Info(t.logPrefix+"tasklist processor already started", "lockKey", t.lockKey)
+		slog.Debug(t.logPrefix+"tasklist processor already started", "lockKey", t.lockKey)
 		return &coordinator.TasklistProcessResponse{Status: "ALREADY_RUNNING"}, nil
 	}
 

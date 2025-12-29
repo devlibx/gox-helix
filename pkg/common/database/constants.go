@@ -18,6 +18,6 @@ const (
 type PartitionAssignmentStatus int8
 
 const (
-	PartitionAssignmentStatusAssigned   PartitionAssignmentStatus = 0
-	PartitionAssignmentStatusUnassigned PartitionAssignmentStatus = 1
+	PartitionAssignmentStatusAssigned   PartitionAssignmentStatus = 1
+	PartitionAssignmentStatusUnassigned PartitionAssignmentStatus = 0
 )
