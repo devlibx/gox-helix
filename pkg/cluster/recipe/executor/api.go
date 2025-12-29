@@ -7,8 +7,8 @@ import (
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/devlibx/gox-helix/pkg/common/config"
-	"github.com/google/uuid"
 	"go.uber.org/fx"
 )
 
@@ -58,6 +58,7 @@ func NewExecutor(
 	PartitionDistributionService coordinator.PartitionDistributionService,
 	ProcessorFactory processor.Factory,
 	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork,
+	applicationSingleton *common.ApplicationSingleton,
 ) (Service, error) {
 	s := &serviceImpl{
 		CrossFunction:                cf,
@@ -69,7 +70,7 @@ func NewExecutor(
 		PartitionDistributionService: PartitionDistributionService,
 		ProcessorFactory:             ProcessorFactory,
 		ClientFunctionProcessWork:    ClientFunctionProcessWork,
-		workerId:                     uuid.NewString(),
+		workerId:                     applicationSingleton.GetWorkerId(),
 	}
 	return s, nil
 }

@@ -25,9 +25,8 @@ type testProcessorDeps struct {
 	mockCtrl             *gomock.Controller
 	mockLocker           *locker.MockLocker
 	mockPartitionService *coordinator.MockPartitionService // Use PartitionService mock
-	stopSignal           *common.ApplicationStopSignal
+	stopSignal           *common.ApplicationSingleton
 	processor            coordinator.TasklistProcessor
-	workChannel          chan *coordinator.Work
 }
 
 func setupTest(t *testing.T) *testProcessorDeps {
@@ -35,9 +34,8 @@ func setupTest(t *testing.T) *testProcessorDeps {
 	mockLocker := locker.NewMockLocker(mockCtrl)
 	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
 	stopCtx, cancel := context.WithCancel(context.Background())
-	stopSignal := &common.ApplicationStopSignal{Ctx: stopCtx}
+	stopSignal := common.GetDefaultApplicationSingletonWithContext(stopCtx)
 	config := coordinator.NewDefaultTasklistProcessorConfig()
-	workChannel := make(chan *coordinator.Work)
 
 	p := NewTasklistProcessor(
 		gox.NewCrossFunction(),
@@ -71,7 +69,6 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		mockPartitionService: mockPartitionService,
 		stopSignal:           stopSignal,
 		processor:            p,
-		workChannel:          workChannel,
 	}
 }
 
