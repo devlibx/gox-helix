@@ -174,11 +174,11 @@ func (t *tasklistProcessorImpl) processingLoop() {
 				select {
 				case workResponse, ok := <-completedCh:
 					if ok && workResponse.Err != nil {
-  					s.logger.Error("client failed to do the work", "lockKey", t.lockKey, "err", workResponse.Err)
+						t.logger.Error("client failed to do the work", "err", workResponse.Err)
 						time.Sleep(10 * time.Millisecond)
 					}
 				case <-t.stopChan:
-					s.logger.Error("internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
+					t.logger.Error("internal stop signal received, stopping tasklist processor")
 					return
 				}
 			} else {
