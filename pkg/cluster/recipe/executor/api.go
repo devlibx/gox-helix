@@ -7,9 +7,10 @@ import (
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/devlibx/gox-helix/pkg/common/config"
-	"github.com/google/uuid"
 	"go.uber.org/fx"
+	"log/slog"
 )
 
 // Service is the main executor service which is responsible for managing the lifecycle of the workers.
@@ -30,9 +31,12 @@ type Service interface {
 
 type serviceImpl struct {
 	gox.CrossFunction
+	logger *slog.Logger
 
 	domainConfigs *config.Config
 	workerId      string
+
+	applicationSingleton *common.ApplicationSingleton
 
 	workerDataLayer              *worker.DataLayer
 	domainDataLayer              *domain.DataLayer
@@ -45,7 +49,7 @@ type serviceImpl struct {
 }
 
 func (s *serviceImpl) GetWorkerId() string {
-	return s.workerId
+	return s.applicationSingleton.GetWorkerId()
 }
 
 func NewExecutor(
@@ -58,6 +62,7 @@ func NewExecutor(
 	PartitionDistributionService coordinator.PartitionDistributionService,
 	ProcessorFactory processor.Factory,
 	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork,
+	applicationSingleton *common.ApplicationSingleton,
 ) (Service, error) {
 	s := &serviceImpl{
 		CrossFunction:                cf,
@@ -69,7 +74,9 @@ func NewExecutor(
 		PartitionDistributionService: PartitionDistributionService,
 		ProcessorFactory:             ProcessorFactory,
 		ClientFunctionProcessWork:    ClientFunctionProcessWork,
-		workerId:                     uuid.NewString(),
+		applicationSingleton:         applicationSingleton,
+		workerId:                     applicationSingleton.GetWorkerId(),
+		logger:                       applicationSingleton.GetModuleLogger("executor"),
 	}
 	return s, nil
 }

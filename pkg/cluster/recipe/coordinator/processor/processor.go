@@ -25,7 +25,7 @@ type Factory interface {
 
 type factoryImpl struct {
 	gox.CrossFunction
-	stopSignal                    *common.ApplicationStopSignal
+	stopSignal                    *common.ApplicationSingleton
 	lockService                   locker.Locker
 	partitionService              coordinator.PartitionService
 	DomainTasklistProcessors      map[string]coordinator.DomainTasklistProcessor
@@ -64,7 +64,7 @@ func (f *factoryImpl) Stop(ctx context.Context) error {
 
 func NewProcessorFactory(
 	cf gox.CrossFunction,
-	stopSignal *common.ApplicationStopSignal,
+	stopSignal *common.ApplicationSingleton,
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 ) Factory {
@@ -79,7 +79,7 @@ func NewProcessorFactory(
 
 	// Make sure we stop everything when we get stop signal
 	go func() {
-		<-stopSignal.Ctx.Done()
+		<-stopSignal.GetApplicationCtx().Done()
 		_ = f.Stop(context.Background())
 	}()
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"os"
 	"testing"
 
@@ -42,6 +43,9 @@ func (s *PartitionDistributorTestSuite) SetupSuite() {
 		fx.Provide(func() (*sql.DB, error) {
 			return sql.Open("mysql", helix.GetDefaultSqlUrl())
 		}),
+		fx.Provide(func() *common.ApplicationSingleton {
+			return common.NewApplicationSingletonWithContext(context.Background())
+		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 		fx.Provide(NewCoordinatorDataLayer),
 		fx.Provide(locker.NewLockerDataLayer), // Provide real locker dependencies
@@ -49,8 +53,8 @@ func (s *PartitionDistributorTestSuite) SetupSuite() {
 		fx.Provide(func() DistributorStrategy { return s.mockDistributor }), // Provide the mock distributor
 		fx.Provide(func(dataLayer *DataLayer) PartitionService { return dataLayer }),
 		// Provide the concrete struct, not the interface
-		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService) (*PartitionDistributionServiceImpl, error) {
-			p, err := NewPartitionDistributionService(lockService, distributor, partitionService)
+		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService, as *common.ApplicationSingleton) (*PartitionDistributionServiceImpl, error) {
+			p, err := NewPartitionDistributionService(lockService, distributor, partitionService, as)
 			return p.(*PartitionDistributionServiceImpl), err
 		}),
 		fx.Populate(&s.dataLayer, &s.db, &s.service),

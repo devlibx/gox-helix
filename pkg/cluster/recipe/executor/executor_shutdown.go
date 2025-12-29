@@ -6,7 +6,6 @@ import (
 	"github.com/devlibx/gox-base/v2/errors"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/devlibx/gox-helix/pkg/common/config"
-	"log/slog"
 )
 
 func (s *serviceImpl) Stop(ctx context.Context) error {
@@ -28,7 +27,7 @@ func (s *serviceImpl) stopDomainOnStop(ctx context.Context, domain *config.Domai
 	); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("[SHUTDOWN] failed to deregister worker=%s for domain=%s", s.workerId, domain.Name))
 	} else {
-		slog.Info("[SHUTDOWN] worker deregistered successfully on shoutdown", "domain", domain.Name, "workerId", s.workerId)
+		s.logger.Info("[SHUTDOWN] worker deregistered successfully on shoutdown", "domain", domain.Name)
 	}
 	return nil
 }

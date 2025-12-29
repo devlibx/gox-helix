@@ -6,7 +6,6 @@ import (
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/devlibx/gox-helix/pkg/common/config"
-	"log/slog"
 )
 
 func (s *serviceImpl) Start(ctx context.Context) error {
@@ -54,7 +53,7 @@ func (s *serviceImpl) startPartitionDistributorOnStart(ctx context.Context, doma
 				TaskList:   tasklist.Name,
 			})
 			if err != nil {
-				slog.Error("failed to start partition distributor: domain=%s, tasklist=%s", domain.Name, tasklist.Name)
+				s.logger.Error("failed to start partition distributor: domain=%s, tasklist=%s", domain.Name, tasklist.Name)
 			}
 		}(domain, tl)
 	}

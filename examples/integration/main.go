@@ -9,13 +9,10 @@ import (
 	"github.com/devlibx/gox-base/v2/serialization"
 	helix "github.com/devlibx/gox-helix"
 	"github.com/devlibx/gox-helix/internal/common"
+	goxHelixApi "github.com/devlibx/gox-helix/pkg/api"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/executor"
-	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
-	common2 "github.com/devlibx/gox-helix/pkg/common"
+	pkgCommon "github.com/devlibx/gox-helix/pkg/common"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	_ "github.com/go-sql-driver/mysql"
@@ -39,7 +36,8 @@ func main() {
 	fmt.Printf("%+v\n", appConfig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-	appSignal := &common2.ApplicationStopSignal{Ctx: ctx, ContextCancel: cancel}
+	defer cancel()
+	appSignal := pkgCommon.NewApplicationSingletonWithContext(ctx)
 
 	appCtx := &common.ApplicationCtx{}
 	app := fx.New(
@@ -54,13 +52,14 @@ func main() {
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
-		processor.Provider,
-		locker.Provider,
-		coordinator.Provider,
-		domain.Provider,
-		worker.Provider,
+		goxHelixApi.Provider,
+		// processor.Provider,
+		// locker.Provider,
+		// coordinator.Provider,
+		// domain.Provider,
+		// worker.Provider,
 
-		fx.Provide(executor.NewExecutor),
+		// fx.Provide(executor.NewExecutor),
 		fx.Invoke(NewCleanupOnBootupProvider),
 		fx.Invoke(executor.NewExecutorLifecycle),
 
@@ -87,7 +86,7 @@ func main() {
 	}
 
 	time.Sleep(30 * time.Minute)
-	appSignal.ContextCancel()
+	appSignal.Stop()
 	time.Sleep(30 * time.Minute)
 }
 

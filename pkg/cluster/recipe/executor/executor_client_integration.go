@@ -6,7 +6,6 @@ import (
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
-	"log/slog"
 	"time"
 )
 
@@ -37,7 +36,7 @@ func (s *serviceImpl) runTaskProcessor(ctx context.Context, domain *config.Domai
 				s.workerId,
 			)
 			if err != nil {
-				slog.Info("failed to get valid partition mapping for to run task processor", "domain", domain.Name, "tasklist", tasklist.Name, "worker", s.workerId, "err", err.Error())
+				s.logger.Info("failed to get valid partition mapping for to run task processor", "domain", domain.Name, "tasklist", tasklist.Name, "err", err.Error())
 				continue
 			}
 
@@ -48,7 +47,7 @@ func (s *serviceImpl) runTaskProcessor(ctx context.Context, domain *config.Domai
 					partitions = append(partitions, p)
 				}
 			}
-			slog.Debug("task processor has assigned partitions", "domain", domain.Name, "tasklist", tasklist.Name, "worker", s.workerId, "partitions", partitions)
+			s.logger.Debug("task processor has assigned partitions", "domain", domain.Name, "tasklist", tasklist.Name, "partitions", partitions)
 
 			if domainTasklistProcessor, err := s.ProcessorFactory.GetOrCreateDomainTasklistProcessor(
 				ctx,
@@ -59,14 +58,14 @@ func (s *serviceImpl) runTaskProcessor(ctx context.Context, domain *config.Domai
 					ClientFunctionProcessWork: s.ClientFunctionProcessWork,
 				},
 			); err != nil {
-				slog.Info("failed to get or create task list processor to process partitions", "domain", domain.Name, "tasklist", tasklist.Name, "worker", s.workerId, "partitions", partitions, "err", err.Error())
+				s.logger.Info("failed to get or create task list processor to process partitions", "domain", domain.Name, "tasklist", tasklist.Name, "partitions", partitions, "err", err.Error())
 			} else {
 				if _, err := domainTasklistProcessor.Process(ctx, coordinator.DomainTasklistProcessRequest{Partitions: partitions}); err != nil {
-					slog.Info("failed to run the processor to process partitions using takes processor", "domain", domain.Name, "tasklist", tasklist.Name, "worker", s.workerId, "partitions", partitions, "err", err.Error())
+					s.logger.Info("failed to run the processor to process partitions using takes processor", "domain", domain.Name, "tasklist", tasklist.Name, "partitions", partitions, "err", err.Error())
 				}
 			}
 		}
 	}
 exit:
-	slog.Info("[SHUTDOWN] stopped task processing for", "domain", domain.Name, "tasklist", tasklist.Name, "worker", s.workerId)
+	s.logger.Info("[SHUTDOWN] stopped task processing for", "domain", domain.Name, "tasklist", tasklist.Name)
 }
