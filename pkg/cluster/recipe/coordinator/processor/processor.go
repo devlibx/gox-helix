@@ -30,6 +30,7 @@ type factoryImpl struct {
 	partitionService              coordinator.PartitionService
 	DomainTasklistProcessors      map[string]coordinator.DomainTasklistProcessor
 	DomainTasklistProcessorsMutex *sync.Mutex
+	applicationSingleton          *common.ApplicationSingleton
 }
 
 func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, request CreateDomainTasklistProcessorRequest) (coordinator.DomainTasklistProcessor, error) {
@@ -48,6 +49,7 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, re
 				WorkerId:                  request.WorkerId,
 				ClientFunctionProcessWork: request.ClientFunctionProcessWork,
 			},
+			f.applicationSingleton,
 		)
 	}
 	return f.DomainTasklistProcessors[key], nil
@@ -67,6 +69,7 @@ func NewProcessorFactory(
 	stopSignal *common.ApplicationSingleton,
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
+	applicationSingleton *common.ApplicationSingleton,
 ) Factory {
 	f := &factoryImpl{
 		CrossFunction:                 cf,
@@ -75,6 +78,7 @@ func NewProcessorFactory(
 		partitionService:              partitionService,
 		DomainTasklistProcessors:      map[string]coordinator.DomainTasklistProcessor{},
 		DomainTasklistProcessorsMutex: &sync.Mutex{},
+		applicationSingleton:          applicationSingleton,
 	}
 
 	// Make sure we stop everything when we get stop signal

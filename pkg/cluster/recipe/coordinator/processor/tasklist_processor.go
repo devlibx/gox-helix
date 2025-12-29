@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"log/slog"
 	"sync"
 	"time"
@@ -23,16 +24,16 @@ type ProcessTasklistRequest struct {
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
 type tasklistProcessorImpl struct {
 	gox.CrossFunction
-	config           *coordinator.TasklistProcessorConfig
-	lockService      locker.Locker
-	partitionService coordinator.PartitionService
+	config               *coordinator.TasklistProcessorConfig
+	lockService          locker.Locker
+	partitionService     coordinator.PartitionService
+	applicationSingleton *common.ApplicationSingleton
+	logger               *slog.Logger
 
 	domain    string
 	tasklist  string
 	partition int
-	lockKey   string
 	ownerId   string
-	logPrefix string
 
 	mutex    sync.Mutex
 	running  bool
@@ -50,6 +51,7 @@ func NewTasklistProcessor(
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 	request *ProcessTasklistRequest,
+	applicationSingleton *common.ApplicationSingleton,
 ) coordinator.TasklistProcessor {
 	p := &tasklistProcessorImpl{
 		CrossFunction:             cf,
@@ -60,9 +62,9 @@ func NewTasklistProcessor(
 		tasklist:                  request.TaskList,
 		partition:                 request.Partition,
 		ClientFunctionProcessWork: request.ClientFunctionProcessWork,
-		lockKey:                   fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
 		ownerId:                   request.WorkerId,
-		logPrefix:                 fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d, workerId=%s - tasklist_processor] ", request.Domain, request.TaskList, request.Partition, request.WorkerId),
+		applicationSingleton:      applicationSingleton,
+		logger:                    applicationSingleton.GetModuleLogger("tasklist_processor").With("domain", request.Domain, "tasklist", request.TaskList, "partition", request.Partition),
 	}
 
 	return p
@@ -73,7 +75,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*coordinator.Tasklis
 	t.mutex.Lock()
 	if t.running {
 		t.mutex.Unlock()
-		slog.Debug(t.logPrefix+"tasklist processor already started", "lockKey", t.lockKey)
+		t.logger.Debug("already started")
 		return &coordinator.TasklistProcessResponse{Status: "ALREADY_RUNNING"}, nil
 	}
 
@@ -84,7 +86,7 @@ func (t *tasklistProcessorImpl) Start(ctx context.Context) (*coordinator.Tasklis
 
 	go t.processingLoop()
 
-	slog.Info(t.logPrefix+"tasklist processor started", "lockKey", t.lockKey, "ownerId", t.ownerId)
+	t.logger.Debug("started")
 	return &coordinator.TasklistProcessResponse{Status: "STARTED"}, nil
 }
 
@@ -107,10 +109,10 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	defer func() {
 		if _, err := t.lockService.ReleaseLock(context.Background(), locker.ReleaseLockRequest{
 			Domain:  t.domain,
-			LockKey: t.lockKey,
+			LockKey: t.getLockKey(),
 			OwnerId: t.ownerId,
 		}); err != nil {
-			slog.Error(t.logPrefix+"failed to release lock on shutdown (no issue - it will expire eventually)", "lockKey", t.lockKey, "err", err)
+			t.logger.Error("failed to release lock on shutdown (no issue - it will expire eventually)", "err", err)
 		}
 	}()
 
@@ -126,19 +128,19 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			// We must hold the lock so we refresh it periodically to make sure we have the lock
 			if _, err := t.lockService.AcquireLock(context.Background(), locker.AcquireLockRequest{
 				Domain:  t.domain,
-				LockKey: t.lockKey,
+				LockKey: t.getLockKey(),
 				OwnerId: t.ownerId,
 				TTL:     t.config.LockTTL,
 			}); err != nil {
 				if lockHeld {
-					slog.Error(t.logPrefix+"failed to refresh lock, suspending work", "lockKey", t.lockKey, "err", err)
+					t.logger.Error("failed to refresh lock, suspending work", "err", err)
 					lockHeld = false
 				} else {
-					slog.Error(t.logPrefix+"still trying to re-acquire lock, work is still suspended", "lockKey", t.lockKey, "err", err)
+					t.logger.Error("still trying to re-acquire lock, work is still suspended", "err", err)
 				}
 			} else {
 				if !lockHeld {
-					slog.Info(t.logPrefix+"lock re-acquired, resuming work", "lockKey", t.lockKey)
+					t.logger.Error("lock re-acquired, resuming work")
 				}
 				lockHeld = true
 			}
@@ -146,14 +148,14 @@ func (t *tasklistProcessorImpl) processingLoop() {
 		case <-ownershipTicker.C:
 			// To be safe we check if we still are owner - if not then we exit the processing
 			if owned, err := t.partitionService.IsPartitionOwnedByOwner(context.Background(), t.domain, t.tasklist, t.ownerId, t.partition); err != nil {
-				slog.Error(t.logPrefix+"failed to check partition ownership", "lockKey", t.lockKey, "err", err)
+				t.logger.Error("failed to check partition ownership", "err", err)
 			} else if !owned {
-				slog.Info(t.logPrefix+"partition is no longer owned by this worker, stopping tasklist processor", "lockKey", t.lockKey)
+				t.logger.Error("partition is no longer owned by this worker, stopping tasklist processor")
 				return
 			}
 
 		case <-t.stopChan:
-			slog.Info(t.logPrefix+"internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
+			t.logger.Error("internal stop signal received, stopping tasklist processor")
 			return
 
 		default:
@@ -172,11 +174,11 @@ func (t *tasklistProcessorImpl) processingLoop() {
 				select {
 				case workResponse, ok := <-completedCh:
 					if ok && workResponse.Err != nil {
-						slog.Error(t.logPrefix+"client failed to do the work", "lockKey", t.lockKey, "err", workResponse.Err)
+  					s.logger.Error("client failed to do the work", "lockKey", t.lockKey, "err", workResponse.Err)
 						time.Sleep(10 * time.Millisecond)
 					}
 				case <-t.stopChan:
-					slog.Info(t.logPrefix+"internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
+					s.logger.Error("internal stop signal received, stopping tasklist processor", "lockKey", t.lockKey)
 					return
 				}
 			} else {
@@ -192,7 +194,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 		// If we found that we already stopped then not need to continue
 		select {
 		case <-t.stopChan:
-			slog.Info(t.logPrefix + "stop signal received before lock initial acquisition, stopping initial lock acquire for tasklist processor")
+			t.logger.Error("stop signal received before lock initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
 		default:
 			// No-OP - otherwise this select will block for event in stopChannel
@@ -201,13 +203,13 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 		// Take a lock first
 		if _, err := t.lockService.AcquireLock(context.Background(), locker.AcquireLockRequest{
 			Domain:  t.domain,
-			LockKey: t.lockKey,
+			LockKey: t.getLockKey(),
 			OwnerId: t.ownerId,
 			TTL:     t.config.LockTTL,
 		}); err == nil {
 			return true
 		} else {
-			slog.Error(t.logPrefix+"failed to acquire initial lock for tasklist processor, will retry...", "err", err)
+			t.logger.Error("failed to acquire initial lock for tasklist processor, will retry...", "err", err)
 		}
 
 		// Retry loc but also stop if we found we are stopped in middle
@@ -215,7 +217,7 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 		case <-time.After(t.config.InitialLockAcquireRetryInterval):
 			// Sleep before we retry to capture lock again
 		case <-t.stopChan:
-			slog.Info(t.logPrefix + "stop signal received while waiting to retry to take initial acquisition, stopping initial lock acquire for tasklist processor")
+			t.logger.Error("stop signal received while waiting to retry to take initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
 		}
 	}
@@ -227,7 +229,7 @@ func (t *tasklistProcessorImpl) Stop(ctx context.Context) error {
 	t.mutex.Lock()
 	if !t.running {
 		t.mutex.Unlock()
-		slog.Info(t.logPrefix+"tasklist processor not running, nothing to stop", "lockKey", t.lockKey)
+		t.logger.Error("tasklist processor not running, nothing to stop")
 		return nil
 	}
 
@@ -238,6 +240,10 @@ func (t *tasklistProcessorImpl) Stop(ctx context.Context) error {
 	// Wait for "processingLoop" to tidy up and stop
 	t.wg.Wait()
 
-	slog.Info(t.logPrefix+"tasklist processor stopped", "lockKey", t.lockKey)
+	t.logger.Error("tasklist processor stopped")
 	return nil
+}
+
+func (t *tasklistProcessorImpl) getLockKey() string {
+	return fmt.Sprintf("%s--%s--partition-%d", t.domain, t.tasklist, t.partition)
 }
