@@ -21,7 +21,7 @@ type HealthCheck struct {
 
 func (h *HealthCheck) Check() error {
 	for _, domain := range h.domainConfigs.Domains {
-		hw, err := h.workerDataLayer.GetWorkerByWorkerIdAndDomain(context.Background(), helixWorkerMysql.GetWorkerByWorkerIdAndDomainParams{
+		hw, err := h.workerDataLayer.Querier.GetWorkerByWorkerIdAndDomain(context.Background(), helixWorkerMysql.GetWorkerByWorkerIdAndDomainParams{
 			Domain:   domain.Name,
 			WorkerID: h.applicationSingleton.GetWorkerId(),
 		})

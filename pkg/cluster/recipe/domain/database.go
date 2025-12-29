@@ -11,7 +11,7 @@ import (
 type DataLayer struct {
 	gox.CrossFunction
 	helixDomainMysql.Querier
-	queries *helixDomainMysql.Queries
+	*helixDomainMysql.Queries
 }
 
 func NewDomainDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder) (*DataLayer, error) {
@@ -22,12 +22,12 @@ func NewDomainDataLayer(cf gox.CrossFunction, ch databaseCommon.ConnectionHolder
 	return &DataLayer{
 		CrossFunction: cf,
 		Querier:       q,
-		queries:       q,
+		Queries:       q,
 	}, err
 }
 
 func (d *DataLayer) GetTaskListInfo(ctx context.Context, domain string, tasklist string) (*helixDomainMysql.HelixDomain, error) {
-	return d.GetDomainByDomainAndTasklist(ctx, helixDomainMysql.GetDomainByDomainAndTasklistParams{
+	return d.Querier.GetDomainByDomainAndTasklist(ctx, helixDomainMysql.GetDomainByDomainAndTasklistParams{
 		Domain:   domain,
 		Tasklist: tasklist,
 	})

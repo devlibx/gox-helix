@@ -9,7 +9,8 @@ import (
 
 var Provider = fx.Options(
 
-	fx.Provide(NewPartitionDistributionService),
+	// fx.Provide(NewPartitionDistributionService),
+	fx.Provide(NewPartitionDistributionServiceV1),
 	fx.Provide(NewCoordinatorDataLayer),
 
 	fx.Provide(func(cf gox.CrossFunction, ws WorkerService, ps PartitionService, ds DomainService) (DistributorStrategy, error) {

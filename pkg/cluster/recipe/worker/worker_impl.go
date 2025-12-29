@@ -37,7 +37,7 @@ func NewWorker(cf gox.CrossFunction, config Config, dataLayer *DataLayer) Worker
 
 func (m *mysqlWorker) Start(ctx context.Context) error {
 	m.id = uuid.NewString()
-	err := m.dataLayer.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
+	err := m.dataLayer.Querier.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
 		WorkerID:        m.id,
 		Domain:          m.config.Domain,
 		CreatedAt:       m.Now(),
@@ -56,14 +56,14 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 			case <-ctx.Done():
 				goto exit
 			case <-ticker.C:
-				result, err := m.dataLayer.SendHeartbeat(context.Background(), helixWorkerMysql.SendHeartbeatParams{
+				result, err := m.dataLayer.Querier.SendHeartbeat(context.Background(), helixWorkerMysql.SendHeartbeatParams{
 					LastHeartbeatAt: m.Now(),
 					Domain:          m.config.Domain,
 					WorkerID:        m.id,
 				})
 				if err == nil {
 					if count, err := result.RowsAffected(); err == nil && count == 0 {
-						if w, err := m.dataLayer.GetWorker(context.Background(), helixWorkerMysql.GetWorkerParams{
+						if w, err := m.dataLayer.Querier.GetWorker(context.Background(), helixWorkerMysql.GetWorkerParams{
 							Domain:   m.config.Domain,
 							WorkerID: m.id,
 						}); err == nil && w.Status != databaseCommon.WorkerStatusActive {
@@ -85,7 +85,7 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 }
 
 func (m *mysqlWorker) Stop() {
-	_ = m.dataLayer.DeregisterWorker(context.Background(), helixWorkerMysql.DeregisterWorkerParams{
+	_ = m.dataLayer.Querier.DeregisterWorker(context.Background(), helixWorkerMysql.DeregisterWorkerParams{
 		Domain:   m.config.Domain,
 		WorkerID: m.id,
 	})

@@ -18,7 +18,7 @@ func (s *serviceImpl) Stop(ctx context.Context) error {
 }
 
 func (s *serviceImpl) stopDomainOnStop(ctx context.Context, domain *config.Domain) error {
-	if err := s.workerDataLayer.DeregisterWorker(
+	if err := s.workerDataLayer.Querier.DeregisterWorker(
 		ctx,
 		helixWorkerMysql.DeregisterWorkerParams{
 			Domain:   domain.Name,
