@@ -20,7 +20,7 @@ type PartitionDistributionService interface {
 	Process(ctx context.Context, request DistributionRequest) error
 }
 
-type PartitionDistributionServiceV1Impl struct {
+type PartitionDistributionServiceImpl struct {
 	lockService          locker.Locker
 	distributor          DistributorStrategy
 	partitionService     PartitionService
@@ -35,7 +35,7 @@ type PartitionDistributionServiceV1Impl struct {
 	distributorStrategy DistributorStrategy
 }
 
-func NewPartitionDistributionServiceV1(
+func NewPartitionDistributionService(
 	lockService locker.Locker,
 	distributor DistributorStrategy,
 	partitionService PartitionService,
@@ -46,7 +46,7 @@ func NewPartitionDistributionServiceV1(
 	distributorStrategy DistributorStrategy,
 	ch databaseCommon.ConnectionHolder,
 ) (PartitionDistributionService, error) {
-	return &PartitionDistributionServiceV1Impl{
+	return &PartitionDistributionServiceImpl{
 		lockService:          lockService,
 		distributor:          distributor,
 		partitionService:     partitionService,
@@ -60,7 +60,7 @@ func NewPartitionDistributionServiceV1(
 	}, nil
 }
 
-func (p *PartitionDistributionServiceV1Impl) Process(ctx context.Context, request DistributionRequest) error {
+func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request DistributionRequest) error {
 	ticker := time.NewTicker(time.Duration(200+rand.Intn(2000)) * time.Millisecond)
 	defer ticker.Stop()
 
@@ -97,7 +97,7 @@ exit:
 	return nil
 }
 
-func (p *PartitionDistributionServiceV1Impl) internalProcessWithRetries(ctx context.Context, request DistributionRequest) error {
+func (p *PartitionDistributionServiceImpl) internalProcessWithRetries(ctx context.Context, request DistributionRequest) error {
 	var err error
 	for i := 0; i < 10; i++ {
 		if err = p.internalProcess(ctx, request); err == nil {
@@ -114,7 +114,7 @@ func (p *PartitionDistributionServiceV1Impl) internalProcessWithRetries(ctx cont
 	return err
 }
 
-func (p *PartitionDistributionServiceV1Impl) internalProcess(ctx context.Context, request DistributionRequest) error {
+func (p *PartitionDistributionServiceImpl) internalProcess(ctx context.Context, request DistributionRequest) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 

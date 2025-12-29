@@ -29,7 +29,7 @@ type PartitionDistributorV1TestSuite struct {
 	db                   *sql.DB
 	mockDistributor      *MockDistributorStrategy
 	mockCtrl             *gomock.Controller
-	service              *PartitionDistributionServiceV1Impl
+	service              *PartitionDistributionServiceImpl
 }
 
 func (s *PartitionDistributorV1TestSuite) SetupSuite() {
@@ -68,8 +68,8 @@ func (s *PartitionDistributorV1TestSuite) SetupSuite() {
 			coordinatorDataLayer *DataLayer,
 			domainDataLayer *domain.DataLayer,
 			ch databaseCommon.ConnectionHolder,
-		) (*PartitionDistributionServiceV1Impl, error) {
-			p, err := NewPartitionDistributionServiceV1(
+		) (*PartitionDistributionServiceImpl, error) {
+			p, err := NewPartitionDistributionService(
 				lockService,
 				distributor,
 				partitionService,
@@ -80,7 +80,7 @@ func (s *PartitionDistributorV1TestSuite) SetupSuite() {
 				distributor, // Pass mock distributor again for the unused field
 				ch,
 			)
-			return p.(*PartitionDistributionServiceV1Impl), err
+			return p.(*PartitionDistributionServiceImpl), err
 		}),
 		fx.Populate(
 			&s.coordinatorDataLayer,
