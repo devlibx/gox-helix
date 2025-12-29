@@ -27,6 +27,9 @@ func (s *serviceImpl) Start(ctx context.Context) error {
 		if err := s.startPartitionDistributorOnStart(ctx, domainCfg); err != nil {
 			return err
 		}
+		if err := s.startTasklistProcessorAndCallingClientWorkFunction(ctx, domainCfg); err != nil {
+			return err
+		}
 	}
 	return nil
 }

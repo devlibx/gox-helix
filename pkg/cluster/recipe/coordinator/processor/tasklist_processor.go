@@ -13,10 +13,11 @@ import (
 )
 
 type ProcessTasklistRequest struct {
-	Domain    string
-	TaskList  string
-	Partition int
-	WorkerId  string
+	Domain                    string
+	TaskList                  string
+	Partition                 int
+	WorkerId                  string
+	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
 }
 
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
@@ -25,7 +26,6 @@ type tasklistProcessorImpl struct {
 	config           *coordinator.TasklistProcessorConfig
 	lockService      locker.Locker
 	partitionService coordinator.PartitionService
-	workChannel      chan<- *coordinator.Work
 
 	domain    string
 	tasklist  string
@@ -38,6 +38,8 @@ type tasklistProcessorImpl struct {
 	running  bool
 	stopChan chan struct{}
 	wg       sync.WaitGroup
+
+	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
 }
 
 // NewTasklistProcessor creates a new tasklist processor instance.
@@ -48,20 +50,19 @@ func NewTasklistProcessor(
 	lockService locker.Locker,
 	partitionService coordinator.PartitionService,
 	request *ProcessTasklistRequest,
-	workChannel chan<- *coordinator.Work,
 ) coordinator.TasklistProcessor {
 	p := &tasklistProcessorImpl{
-		CrossFunction:    cf,
-		config:           config,
-		lockService:      lockService,
-		workChannel:      workChannel,
-		partitionService: partitionService,
-		domain:           request.Domain,
-		tasklist:         request.TaskList,
-		partition:        request.Partition,
-		lockKey:          fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
-		ownerId:          request.WorkerId,
-		logPrefix:        fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d, workerId=%s - tasklist_processor] ", request.Domain, request.TaskList, request.Partition, request.WorkerId),
+		CrossFunction:             cf,
+		config:                    config,
+		lockService:               lockService,
+		partitionService:          partitionService,
+		domain:                    request.Domain,
+		tasklist:                  request.TaskList,
+		partition:                 request.Partition,
+		ClientFunctionProcessWork: request.ClientFunctionProcessWork,
+		lockKey:                   fmt.Sprintf("%s--%s--partition-%d", request.Domain, request.TaskList, request.Partition),
+		ownerId:                   request.WorkerId,
+		logPrefix:                 fmt.Sprintf("[domain=%s, tasklist=%s, partition=%d, workerId=%s - tasklist_processor] ", request.Domain, request.TaskList, request.Partition, request.WorkerId),
 	}
 
 	return p
@@ -157,22 +158,17 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 		default:
 			if lockHeld {
-				respChannel := make(chan *coordinator.WorkResponse)
-				t.workChannel <- &coordinator.Work{
-					Domain:           t.domain,
-					Tasklist:         t.tasklist,
-					WorkerId:         t.ownerId,
-					Partition:        t.partition,
-					CompletedChannel: respChannel,
-				}
-				select {
-				case resp, closed := <-respChannel:
-					if !closed {
-						_ = resp
-					}
-				case <-t.stopChan:
-					slog.Info(t.logPrefix+"internal stop signal received when waiting for work response, stopping tasklist processor", "lockKey", t.lockKey)
-					return
+				if _, err := t.ClientFunctionProcessWork(
+					context.Background(),
+					coordinator.Work{
+						Domain:    t.domain,
+						Tasklist:  t.tasklist,
+						WorkerId:  t.ownerId,
+						Partition: t.partition,
+					},
+				); err != nil {
+					slog.Error(t.logPrefix+"failed to run client function", "lockKey", t.lockKey, "err", err)
+					time.Sleep(10 * time.Millisecond)
 				}
 			} else {
 				time.Sleep(10 * time.Millisecond)

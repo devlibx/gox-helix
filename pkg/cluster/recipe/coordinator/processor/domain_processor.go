@@ -59,12 +59,12 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 				d.lockService,
 				d.partitionService,
 				&ProcessTasklistRequest{
-					Domain:    d.config.Domain,
-					TaskList:  d.config.TaskList,
-					Partition: task,
-					WorkerId:  d.config.WorkerId,
+					Domain:                    d.config.Domain,
+					TaskList:                  d.config.TaskList,
+					Partition:                 task,
+					WorkerId:                  d.config.WorkerId,
+					ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
 				},
-				nil, // FIXME
 			)
 		}
 		_, _ = d.tasklistProcessor[task].Start(context.Background())
@@ -83,9 +83,10 @@ func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
 }
 
 type DomainTasklistProcessorCfg struct {
-	Domain   string
-	TaskList string
-	WorkerId string
+	Domain                    string
+	TaskList                  string
+	WorkerId                  string
+	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
 }
 
 func NewDomainTasklistProcessor(

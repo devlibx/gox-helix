@@ -9,5 +9,5 @@ CREATE TABLE helix_worker_partition_mapping
     created_at datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `domain_tasklist_key` (`domain`, `tasklist`)
+    UNIQUE KEY `domain_tasklist_key` (`domain`, `tasklist`, `owner_id`)
 );
