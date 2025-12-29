@@ -66,9 +66,8 @@ func main() {
 		fx.Invoke(executor.NewExecutorLifecycle),
 
 		fx.Provide(func() coordinator.ClientFunctionProcessWork {
-
 			return func(ctx context.Context, work coordinator.Work) {
-        if atomic.AddInt64(&count, 1)%10 == 0 {
+				if atomic.AddInt64(&count, 1)%10 == 0 {
 					slog.Info("Got work to do", "work", work)
 				}
 				time.Sleep(10 * time.Second)
