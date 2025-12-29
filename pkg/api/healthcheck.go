@@ -34,7 +34,7 @@ func (h *HealthCheck) Check() error {
 		}
 
 		if hw.LastHeartbeatAt.Before(h.Now().Add(-1 * time.Minute)) {
-			return errors.Wrap(err, "worker is heartbeat is old: domain=%s, worker_id=%s, status=%d, last_heartbeat_at=%v", domain.Name, h.applicationSingleton.GetWorkerId(), hw.Status, hw.LastHeartbeatAt, "now", h.Now())
+			return errors.Wrap(err, "worker is heartbeat is old: domain=%s, worker_id=%s, status=%d, last_heartbeat_at=%v, now=%v", domain.Name, h.applicationSingleton.GetWorkerId(), hw.Status, hw.LastHeartbeatAt, h.Now())
 		}
 	}
 	return nil

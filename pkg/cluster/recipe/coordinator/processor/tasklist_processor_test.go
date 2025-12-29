@@ -27,6 +27,7 @@ type testProcessorDeps struct {
 	mockPartitionService *coordinator.MockPartitionService // Use PartitionService mock
 	stopSignal           *common.ApplicationSingleton
 	processor            coordinator.TasklistProcessor
+	as                   *common.ApplicationSingleton
 }
 
 func setupTest(t *testing.T) *testProcessorDeps {
@@ -36,6 +37,7 @@ func setupTest(t *testing.T) *testProcessorDeps {
 	stopCtx, cancel := context.WithCancel(context.Background())
 	stopSignal := common.NewApplicationSingletonWithContext(stopCtx)
 	config := coordinator.NewDefaultTasklistProcessorConfig()
+	as := common.NewApplicationSingletonWithContext(stopCtx)
 
 	p := NewTasklistProcessor(
 		gox.NewCrossFunction(),
@@ -52,6 +54,7 @@ func setupTest(t *testing.T) *testProcessorDeps {
 				close(work.CompletedChannel)
 			},
 		},
+		as,
 	)
 
 	// Default expectation for ownership checks to allow existing tests to pass
@@ -70,6 +73,7 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		mockPartitionService: mockPartitionService,
 		stopSignal:           stopSignal,
 		processor:            p,
+		as:                   as,
 	}
 }
 
@@ -135,6 +139,7 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 				close(work.CompletedChannel)
 			},
 		},
+		common.NewApplicationSingletonWithContext(context.Background()),
 	)
 
 	mockLocker.EXPECT().AcquireLock(gomock.Any(), gomock.Any()).Return(&locker.AcquireLockResponse{}, nil).AnyTimes()
@@ -199,6 +204,7 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 				close(work.CompletedChannel)
 			},
 		},
+		deps.as,
 	)
 	_, _ = processor.Start(context.Background())
 
