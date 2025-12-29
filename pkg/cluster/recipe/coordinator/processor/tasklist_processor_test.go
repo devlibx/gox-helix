@@ -34,7 +34,7 @@ func setupTest(t *testing.T) *testProcessorDeps {
 	mockLocker := locker.NewMockLocker(mockCtrl)
 	mockPartitionService := coordinator.NewMockPartitionService(mockCtrl)
 	stopCtx, cancel := context.WithCancel(context.Background())
-	stopSignal := common.GetDefaultApplicationSingletonWithContext(stopCtx)
+	stopSignal := common.NewApplicationSingletonWithContext(stopCtx)
 	config := coordinator.NewDefaultTasklistProcessorConfig()
 
 	p := NewTasklistProcessor(

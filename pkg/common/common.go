@@ -3,18 +3,22 @@ package common
 import (
 	"context"
 	"github.com/google/uuid"
+	"log/slog"
+	"sync"
 )
 
 type ApplicationSingleton struct {
 	applicationCtx           context.Context
 	applicationContextCancel context.CancelFunc
 	workerId                 string
+	logger                   *slog.Logger
+	applicationCtxStopOnce   *sync.Once
 }
 
 func (app *ApplicationSingleton) Stop() {
-	if app.applicationContextCancel != nil {
+	app.applicationCtxStopOnce.Do(func() {
 		app.applicationContextCancel()
-	}
+	})
 }
 
 func (app *ApplicationSingleton) GetApplicationCtx() context.Context {
@@ -25,20 +29,17 @@ func (app *ApplicationSingleton) GetWorkerId() string {
 	return app.workerId
 }
 
-func GetDefaultApplicationSingleton() *ApplicationSingleton {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &ApplicationSingleton{
-		applicationCtx:           ctx,
-		applicationContextCancel: cancel,
-		workerId:                 uuid.NewString(),
-	}
+func (app *ApplicationSingleton) GetLogger() *slog.Logger {
+	return app.logger
 }
 
-func GetDefaultApplicationSingletonWithContext(ctx context.Context) *ApplicationSingleton {
+func NewApplicationSingletonWithContext(ctx context.Context) *ApplicationSingleton {
 	ctx, cancel := context.WithCancel(ctx)
 	return &ApplicationSingleton{
 		applicationCtx:           ctx,
 		applicationContextCancel: cancel,
 		workerId:                 uuid.NewString(),
+		logger:                   slog.With("gox-helix"),
+		applicationCtxStopOnce:   &sync.Once{},
 	}
 }

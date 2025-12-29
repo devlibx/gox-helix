@@ -37,7 +37,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
-	appSignal := pkgCommon.GetDefaultApplicationSingletonWithContext(ctx)
+	appSignal := pkgCommon.NewApplicationSingletonWithContext(ctx)
 
 	appCtx := &common.ApplicationCtx{}
 	app := fx.New(
