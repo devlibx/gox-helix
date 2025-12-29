@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"os"
 	"testing"
 	"time"
@@ -44,6 +45,10 @@ func (s *E2ETestSuite) SetupSuite() {
 		}),
 		fx.Provide(databaseCommon.NewConnectionHolder),
 
+		fx.Provide(func() *common.ApplicationSingleton {
+			return common.NewApplicationSingletonWithContext(context.Background())
+		}),
+
 		// Coordinator
 		fx.Provide(NewCoordinatorDataLayer),
 		fx.Provide(func(dataLayer *DataLayer) PartitionService { return dataLayer }),
@@ -62,8 +67,8 @@ func (s *E2ETestSuite) SetupSuite() {
 
 		// Distribution
 		fx.Provide(NewDistributorStrategy),
-		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService) (*PartitionDistributionServiceImpl, error) {
-			p, err := NewPartitionDistributionService(lockService, distributor, partitionService)
+		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService, as *common.ApplicationSingleton) (*PartitionDistributionServiceImpl, error) {
+			p, err := NewPartitionDistributionService(lockService, distributor, partitionService, as)
 			return p.(*PartitionDistributionServiceImpl), err
 		}),
 

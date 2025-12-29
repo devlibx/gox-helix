@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"github.com/devlibx/gox-helix/pkg/common"
 	"log/slog"
 	"math/rand"
 	"time"
@@ -16,20 +17,25 @@ type PartitionDistributionService interface {
 }
 
 type PartitionDistributionServiceImpl struct {
-	lockService      locker.Locker
-	distributor      DistributorStrategy
-	partitionService PartitionService
+	lockService          locker.Locker
+	distributor          DistributorStrategy
+	partitionService     PartitionService
+	applicationSingleton *common.ApplicationSingleton
+	logger               *slog.Logger
 }
 
 func NewPartitionDistributionService(
 	lockService locker.Locker,
 	distributor DistributorStrategy,
 	partitionService PartitionService,
+	applicationSingleton *common.ApplicationSingleton,
 ) (PartitionDistributionService, error) {
 	return &PartitionDistributionServiceImpl{
-		lockService:      lockService,
-		distributor:      distributor,
-		partitionService: partitionService,
+		lockService:          lockService,
+		distributor:          distributor,
+		partitionService:     partitionService,
+		applicationSingleton: applicationSingleton,
+		logger:               applicationSingleton.GetModuleLogger("partition_distributor"),
 	}, nil
 }
 
@@ -37,7 +43,7 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 	ticker := time.NewTicker(time.Second * 1)
 	defer ticker.Stop()
 
-	slog.Info("partition distributor process started", "domain", request.DomainName, "tasklist", request.TaskList)
+	p.logger.Info("partition distributor process started", "domain", request.DomainName, "tasklist", request.TaskList)
 	for {
 		select {
 		case <-ctx.Done():
@@ -54,10 +60,10 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 			}); err == nil {
 				// If lock is acquired, run the internal process
 				if err = p.internalProcess(ctx, request); err != nil {
-					slog.Error("failed to run partition distributor internal process", "err", err, "domain", request.DomainName, "tasklist", request.TaskList)
+					p.logger.Error("failed to run partition distributor internal process", "err", err, "domain", request.DomainName, "tasklist", request.TaskList)
 				}
 			} else {
-				slog.Debug("(expected - not all nodes will get lock) lock not acquired for partition distributor", "domain", request.DomainName, "tasklist", request.TaskList)
+				p.logger.Debug("(expected - not all nodes will get lock) lock not acquired for partition distributor", "domain", request.DomainName, "tasklist", request.TaskList)
 			}
 
 			// Reset tick after 5-10 sec
@@ -67,7 +73,7 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 	}
 
 exit:
-	slog.Info("[SHUTDOWN] partition distributor process stopped (context done)", "domain", request.DomainName, "tasklist", request.TaskList)
+	p.logger.Info("[SHUTDOWN] partition distributor process stopped (context done)", "domain", request.DomainName, "tasklist", request.TaskList)
 	return nil
 }
 
@@ -83,7 +89,7 @@ func (p *PartitionDistributionServiceImpl) internalProcess(ctx context.Context, 
 		return errors.Wrap(err, "failed to persist distribution for domain=%s, tasklist=%s", request.DomainName, request.TaskList)
 	}
 
-	slog.Debug("successfully completed partition distribution cycle", "domain", request.DomainName, "tasklist", request.TaskList)
+	p.logger.Debug("successfully completed partition distribution cycle", "domain", request.DomainName, "tasklist", request.TaskList)
 	return nil
 }
 

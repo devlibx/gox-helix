@@ -13,6 +13,13 @@ type ApplicationSingleton struct {
 	workerId                 string
 	logger                   *slog.Logger
 	applicationCtxStopOnce   *sync.Once
+	loggers                  map[string]*slog.Logger
+}
+
+func (app *ApplicationSingleton) GetModuleLogger(name string) *slog.Logger {
+	logger := app.logger.With("module", name)
+	app.loggers[name] = logger
+	return logger
 }
 
 func (app *ApplicationSingleton) Stop() {
@@ -35,11 +42,13 @@ func (app *ApplicationSingleton) GetLogger() *slog.Logger {
 
 func NewApplicationSingletonWithContext(ctx context.Context) *ApplicationSingleton {
 	ctx, cancel := context.WithCancel(ctx)
+	workerId := uuid.NewString()
 	return &ApplicationSingleton{
 		applicationCtx:           ctx,
 		applicationContextCancel: cancel,
-		workerId:                 uuid.NewString(),
-		logger:                   slog.With("gox-helix"),
+		workerId:                 workerId,
+		logger:                   slog.With("app", "gox-helix").With("worker_id", workerId),
 		applicationCtxStopOnce:   &sync.Once{},
+		loggers:                  make(map[string]*slog.Logger),
 	}
 }
