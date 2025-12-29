@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+type PartitionDistributionService interface {
+	Process(ctx context.Context, request DistributionRequest) error
+}
+
 type PartitionDistributionServiceV1Impl struct {
 	lockService          locker.Locker
 	distributor          DistributorStrategy
@@ -171,4 +175,8 @@ func (p *PartitionDistributionServiceV1Impl) internalProcess(ctx context.Context
 	}
 
 	return nil
+}
+
+func randomDelay(min, max time.Duration) time.Duration {
+	return min + time.Duration(rand.Int63n(int64(max-min)))
 }

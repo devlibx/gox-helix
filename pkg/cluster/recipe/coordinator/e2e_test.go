@@ -26,7 +26,7 @@ type E2ETestSuite struct {
 	suite.Suite
 	db                   *sql.DB
 	partitionService     PartitionService
-	partitionDistributor *PartitionDistributionServiceImpl
+	partitionDistributor *PartitionDistributionServiceV1Impl
 	workerDataLayer      *worker.DataLayer
 	domainDataLayer      *domain.DataLayer
 }
@@ -67,9 +67,9 @@ func (s *E2ETestSuite) SetupSuite() {
 
 		// Distribution
 		fx.Provide(NewDistributorStrategy),
-		fx.Provide(func(lockService locker.Locker, distributor DistributorStrategy, partitionService PartitionService, as *common.ApplicationSingleton) (*PartitionDistributionServiceImpl, error) {
-			p, err := NewPartitionDistributionService(lockService, distributor, partitionService, as)
-			return p.(*PartitionDistributionServiceImpl), err
+		fx.Provide(NewPartitionDistributionServiceV1),
+		fx.Provide(func(p PartitionDistributionService) *PartitionDistributionServiceV1Impl {
+			return p.(*PartitionDistributionServiceV1Impl)
 		}),
 
 		fx.Populate(&s.db, &s.partitionService, &s.partitionDistributor, &s.workerDataLayer, &s.domainDataLayer),
