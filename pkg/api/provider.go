@@ -17,4 +17,5 @@ var Provider = fx.Options(
 	domain.Provider,
 	worker.Provider,
 	fx.Provide(executor.NewExecutor),
+	fx.Provide(NewHealthCheck),
 )

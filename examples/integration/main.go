@@ -83,12 +83,22 @@ func main() {
 			&appCtx.PartitionDistributionService,
 			&appCtx.ProcessorFactory,
 			&appCtx.ExecutorService,
+			&appCtx.HealthCheck,
 		),
 	)
 	err = app.Start(ctx)
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			if err := appCtx.HealthCheck.Check(); err != nil {
+				fmt.Println("health check", err)
+			}
+		}
+	}()
 
 	time.Sleep(30 * time.Minute)
 	appSignal.Stop()

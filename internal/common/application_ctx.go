@@ -1,6 +1,7 @@
 package common
 
 import (
+	goxHelixApi "github.com/devlibx/gox-helix/pkg/api"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/domain"
@@ -16,4 +17,5 @@ type ApplicationCtx struct {
 	PartitionDistributionService coordinator.PartitionDistributionService
 	ProcessorFactory             processor.Factory
 	ExecutorService              executor.Service
+	HealthCheck                  *goxHelixApi.HealthCheck
 }
