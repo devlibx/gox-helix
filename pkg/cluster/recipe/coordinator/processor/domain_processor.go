@@ -10,6 +10,16 @@ import (
 	"sync"
 )
 
+// used to write test
+type newTasklistProcessorBuilder func(
+	cf gox.CrossFunction,
+	config *coordinator.TasklistProcessorConfig,
+	lockService locker.Locker,
+	partitionService coordinator.PartitionService,
+	request *ProcessTasklistRequest,
+	applicationSingleton *common.ApplicationSingleton,
+) coordinator.TasklistProcessor
+
 type domainTasklistProcessorImpl struct {
 	gox.CrossFunction
 	lockService           locker.Locker
@@ -19,6 +29,9 @@ type domainTasklistProcessorImpl struct {
 	activePartitionsMutex *sync.Mutex
 	tasklistProcessor     map[int]coordinator.TasklistProcessor
 	applicationSingleton  *common.ApplicationSingleton
+
+	// Used in testing - in prod code it is not set and not used
+	newTasklistProcessorBuilder newTasklistProcessorBuilder
 }
 
 func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coordinator.DomainTasklistProcessRequest) (*coordinator.DomainTasklistProcessResponse, error) {
@@ -66,20 +79,40 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 	//    start and stop on tasklist processor is idempotent
 	for _, partition := range d.activePartitions {
 		if _, ok := d.tasklistProcessor[partition]; !ok {
-			d.tasklistProcessor[partition] = NewTasklistProcessor(
-				d.CrossFunction,
-				coordinator.NewDefaultTasklistProcessorConfig(),
-				d.lockService,
-				d.partitionService,
-				&ProcessTasklistRequest{
-					Domain:                    d.config.Domain,
-					TaskList:                  d.config.TaskList,
-					Partition:                 partition,
-					WorkerId:                  d.config.WorkerId,
-					ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
-				},
-				d.applicationSingleton,
-			)
+
+			// d.newTasklistProcessorBuilder is set only in tests
+			// In prod code it will always be nil
+			if d.newTasklistProcessorBuilder == nil {
+				d.tasklistProcessor[partition] = NewTasklistProcessor(
+					d.CrossFunction,
+					coordinator.NewDefaultTasklistProcessorConfig(),
+					d.lockService,
+					d.partitionService,
+					&ProcessTasklistRequest{
+						Domain:                    d.config.Domain,
+						TaskList:                  d.config.TaskList,
+						Partition:                 partition,
+						WorkerId:                  d.config.WorkerId,
+						ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
+					},
+					d.applicationSingleton,
+				)
+			} else {
+				d.tasklistProcessor[partition] = d.newTasklistProcessorBuilder(
+					d.CrossFunction,
+					coordinator.NewDefaultTasklistProcessorConfig(),
+					d.lockService,
+					d.partitionService,
+					&ProcessTasklistRequest{
+						Domain:                    d.config.Domain,
+						TaskList:                  d.config.TaskList,
+						Partition:                 partition,
+						WorkerId:                  d.config.WorkerId,
+						ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
+					},
+					d.applicationSingleton,
+				)
+			}
 		}
 		if _, err := d.tasklistProcessor[partition].Start(context.Background()); err != nil {
 			slog.Warn("DomainTasklistProcessor failed to start partition processor (when we get new assignment, then we need to start partition processing)",
