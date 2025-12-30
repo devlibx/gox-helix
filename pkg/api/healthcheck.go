@@ -21,6 +21,9 @@ type HealthCheck struct {
 
 func (h *HealthCheck) Check() error {
 	for _, domain := range h.domainConfigs.Domains {
+		if domain.Disabled {
+			continue
+		}
 		hw, err := h.workerDataLayer.Querier.GetWorkerByWorkerIdAndDomain(context.Background(), helixWorkerMysql.GetWorkerByWorkerIdAndDomainParams{
 			Domain:   domain.Name,
 			WorkerID: h.applicationSingleton.GetWorkerId(),

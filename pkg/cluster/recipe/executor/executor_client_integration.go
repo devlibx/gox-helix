@@ -11,6 +11,9 @@ import (
 
 func (s *serviceImpl) startTasklistProcessorAndCallingClientWorkFunction(ctx context.Context, domain *config.Domain) error {
 	for _, tl := range domain.TaskLists {
+		if tl.Disabled {
+			continue
+		}
 		go func(tasklist *config.TaskList) {
 			s.runTaskProcessor(ctx, domain, tasklist)
 		}(tl)
