@@ -72,7 +72,7 @@ func (mc *MetricsCollectorV1) FlushReport() {
 
 	slog.Info("Flushing metrics",
 		"algo", mc.algo,
-		"count", mc.timer.Count(),
+		// "count", mc.timer.Count(),
 		"rps", mc.timer.Count()/10,
 		"99", time.Duration(mc.timer.Percentile(0.99)),
 		"999", time.Duration(mc.timer.Percentile(0.999)),
