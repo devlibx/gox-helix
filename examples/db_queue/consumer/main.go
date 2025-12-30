@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
 	config2 "github.com/devlibx/gox-helix/pkg/common/config"
@@ -120,10 +121,12 @@ func (mc *MetricsCollector) Report() {
 		p99 := latencies[int(float64(len(latencies))*0.99)]
 		p999 := latencies[int(float64(len(latencies))*0.999)]
 		max := latencies[len(latencies)-1]
+		rps := float64(numJobs) / mc.reportInterval.Seconds()
 
 		slog.Info("Tasklist Metrics",
 			"tasklist", tasklist,
 			"jobs_processed", numJobs,
+			"rps", rps,
 			"p95_latency", p95,
 			"p99_latency", p99,
 			"p999_latency", p999,
@@ -235,12 +238,21 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 	var err error
 	var startTime time.Time
 
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+
+	defer func() {
+		work.CompletedChannel <- coordinator.WorkResponse{}
+		close(work.CompletedChannel)
+	}()
+
 	for {
+		jobID = ""
 		select {
 		case <-ctx.Done():
 			slog.Info("Context cancelled, stopping work processing for partition", "work", work)
-			work.CompletedChannel <- coordinator.WorkResponse{}
-			close(work.CompletedChannel)
+			return
+		case <-tick.C:
 			return
 
 		default:
@@ -269,17 +281,19 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 					Domain: work.Domain, Tasklist: work.Tasklist, PartitionID: uint32(work.Partition),
 				})
 				if e == nil {
-					// sqlc returns MIN(id) as an interface{}, so we need to type assert it to string
-					jobID = string(id.([]uint8))
+					switch i := id.(type) {
+					case []uint8:
+						jobID = string(i)
+					}
 				}
 				err = e
 			case "GetNextJobMinForUpdate":
 				id, e := queries.GetNextJobMinForUpdate(ctx, database.GetNextJobMinForUpdateParams{
 					Domain: work.Domain, Tasklist: work.Tasklist, PartitionID: uint32(work.Partition),
 				})
-				if e == nil {
-					// sqlc returns MIN(id) as an interface{}, so we need to type assert it to string
-					jobID = string(id.([]uint8))
+				switch i := id.(type) {
+				case []uint8:
+					jobID = string(i)
 				}
 				err = e
 			default:
@@ -289,12 +303,16 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 			}
 
 			// If no job is found, sleep for a bit and continue polling.
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				time.Sleep(100 * time.Millisecond)
 				continue
 			} else if err != nil {
 				slog.Error("Failed to get next job", "work", work, "err", err)
 				time.Sleep(500 * time.Millisecond) // Sleep longer on error
+				continue
+			}
+
+			if jobID == "" {
 				continue
 			}
 
@@ -304,13 +322,15 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 				continue
 			}
 
-			// Process the job (simulate work)
-			time.Sleep(5 * time.Millisecond) // Simulate processing time
+			if false {
+				// Process the job (simulate work)
+				time.Sleep(1 * time.Millisecond) // Simulate processing time
 
-			// Mark the job as completed
-			if err := queries.UpdateJobStatus(ctx, database.UpdateJobStatusParams{ID: jobID, Status: "completed"}); err != nil {
-				slog.Error("Failed to update job status to completed", "job_id", jobID, "err", err)
-				continue
+				// Mark the job as completed
+				if err := queries.UpdateJobStatus(ctx, database.UpdateJobStatusParams{ID: jobID, Status: "completed"}); err != nil {
+					slog.Error("Failed to update job status to completed", "job_id", jobID, "err", err)
+					continue
+				}
 			}
 
 			// Record processing latency
