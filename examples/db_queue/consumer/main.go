@@ -41,14 +41,19 @@ type MetricsCollectorV1 struct {
 	timer    metrics.Timer
 	m        *sync.RWMutex
 	algo     string
+
+	completeCh     chan string
+	completeChOnce *sync.Once
 }
 
 func NewMetricsCollectorV1() *MetricsCollectorV1 {
 	m := &MetricsCollectorV1{
-		m:        &sync.RWMutex{},
-		registry: metrics.NewRegistry(),
-		timer:    metrics.NewTimer(),
-		algo:     "",
+		m:              &sync.RWMutex{},
+		registry:       metrics.NewRegistry(),
+		timer:          metrics.NewTimer(),
+		algo:           "",
+		completeCh:     make(chan string, 1000000),
+		completeChOnce: &sync.Once{},
 	}
 	_ = m.registry.Register("latency", m.timer)
 
@@ -143,8 +148,20 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 		close(work.CompletedChannel)
 	}()
 
-	tick := time.NewTicker(90 * time.Millisecond)
+	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
+
+	metricsCollector.completeChOnce.Do(func() {
+		for i := 0; i < 5; i++ {
+			go func() {
+				for j := range metricsCollector.completeCh {
+					if e := queries.UpdateJobStatus(context.Background(), database.UpdateJobStatusParams{ID: j, Status: "completed"}); e != nil {
+						slog.Error("Failed to update job status to completed", "job_id", j, "err", e)
+					}
+				}
+			}()
+		}
+	})
 
 	for {
 		select {
@@ -208,7 +225,7 @@ func realProcessWork(ctx context.Context, work coordinator.Work, queries *databa
 	}
 
 	if err == nil && jobID != "" {
-		if e := queries.UpdateJobStatus(ctx, database.UpdateJobStatusParams{ID: jobID, Status: "in_progress"}); e != nil {
+		if e := queries.UpdateJobStatus(context.Background(), database.UpdateJobStatusParams{ID: jobID, Status: "in_progress"}); e != nil {
 			slog.Error("Failed to update job status to in_progress", "job_id", jobID, "err", e)
 		}
 	}

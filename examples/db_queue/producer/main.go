@@ -14,6 +14,7 @@ import (
 	"github.com/devlibx/gox-helix/examples/db_queue/database"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
+	"go.uber.org/ratelimit"
 )
 
 const (
@@ -63,6 +64,8 @@ func main() {
 	var mu sync.Mutex
 	entropy := ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0)
 
+	rl := ratelimit.New(30000)
+
 	// Start the concurrent producers.
 	for i := 0; i < numProducers; i++ {
 		go func(producerID int) {
@@ -93,6 +96,7 @@ func main() {
 				})
 
 				// Create the job in the database.
+				rl.Take()
 				err := queries.CreateJob(ctx, database.CreateJobParams{
 					ID:          jobID,
 					Domain:      domain,
