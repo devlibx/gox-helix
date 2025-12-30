@@ -1,0 +1,17 @@
+version: "2"
+sql:
+  - engine: "mysql"
+    schema: "./schema.sql"
+    queries: "./queries.sql"
+    gen:
+      go:
+        package: "database"
+        out: "."
+        sql_package: "database/sql"
+        # We want to use the generated models directly without them being pointers, for simplicity.
+        emit_pointers_for_null_types: false
+        # We are using ULIDs which are strings, but we want to generate them as a custom type for type safety.
+        # This part will be more useful if we define a ULID type in Go. For now, we'll stick to string.
+        # overrides:
+        #   - db_type: "varchar(26)"
+        #     go_type: "github.com/oklog/ulid/v2.ULID"

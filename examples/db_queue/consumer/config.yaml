@@ -1,0 +1,12 @@
+worker:
+  domains:
+    order_processing:
+      name: order_processing
+      worker_count_to_process_domain: 3
+      task_list:
+        new_orders:
+          name: new_orders
+          partition_count: 8
+        cancellations:
+          name: partition_count
+          partition_count: 4
