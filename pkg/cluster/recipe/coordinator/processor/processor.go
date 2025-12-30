@@ -37,7 +37,7 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, re
 	f.DomainTasklistProcessorsMutex.Lock()
 	defer f.DomainTasklistProcessorsMutex.Unlock()
 
-	key := fmt.Sprintf("%s-%s", request.Domain, request.TaskList)
+	key := fmt.Sprintf("%s-%s-%s", request.Domain, request.TaskList, request.WorkerId)
 	if _, ok := f.DomainTasklistProcessors[key]; !ok {
 		f.DomainTasklistProcessors[key] = NewDomainTasklistProcessor(
 			f.CrossFunction,

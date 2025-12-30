@@ -26,10 +26,10 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 	defer d.activePartitionsMutex.Unlock()
 
 	// Make sure we stopped any partitions which we no longer own first
-	for _, activePartition := range d.activePartitions {
+	for activePartition, _ := range d.activePartitions { // d.activePartitions {
 
 		partitionIsStillActiveAssignedToMe := false
-		for _, newPartition := range request.Partitions {
+		for newPartition, _ := range request.Partitions {
 			if newPartition == activePartition {
 				partitionIsStillActiveAssignedToMe = true
 			}
@@ -56,7 +56,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 
 	// Rebuild the new partitions
 	d.activePartitions = make([]int, 0)
-	for task, _ := range request.Partitions {
+	for _, task := range request.Partitions {
 		d.activePartitions = append(d.activePartitions, task)
 	}
 
