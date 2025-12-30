@@ -61,10 +61,12 @@ func NewPartitionDistributionService(
 }
 
 func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request DistributionRequest) error {
+	logger := p.logger.With("domain", request.DomainName).With("tasklist", request.TaskList)
+
 	ticker := time.NewTicker(time.Duration(200+rand.Intn(2000)) * time.Millisecond)
 	defer ticker.Stop()
 
-	p.logger.Info("process started")
+	logger.Info("process started")
 	ownerId := p.applicationSingleton.GetWorkerId()
 	for {
 		select {
@@ -80,10 +82,10 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 				TTL:     10 * time.Second,
 			}); err == nil {
 				if err = p.internalProcess(ctx, request); err != nil {
-					p.logger.Error("failed to run partition distributor periodic process", "err", err.Error())
+					logger.Error("failed to run partition distributor periodic process", "err", err.Error())
 				}
 			} else {
-				p.logger.Debug("(expected - not all nodes will get lock) lock not acquired")
+				logger.Debug("(expected - not all nodes will get lock) lock not acquired")
 			}
 
 			// Reset tick after 5-10 sec
@@ -93,18 +95,20 @@ func (p *PartitionDistributionServiceImpl) Process(ctx context.Context, request 
 	}
 
 exit:
-	p.logger.Info("[SHUTDOWN] partition distributor process stopped (context done)")
+	logger.Info("[SHUTDOWN] partition distributor process stopped (context done)")
 	return nil
 }
 
 func (p *PartitionDistributionServiceImpl) internalProcessWithRetries(ctx context.Context, request DistributionRequest) error {
+	logger := p.logger.With("domain", request.DomainName).With("tasklist", request.TaskList)
+
 	var err error
 	for i := 0; i < 10; i++ {
 		if err = p.internalProcess(ctx, request); err == nil {
 			return nil
 		} else {
 			if mySqlErr, ok := errors.AsTyped[*mysql.MySQLError](err); ok && mySqlErr.Number == 1213 {
-				p.logger.Warn("(expected if unfrequent or at boot time) got error while persisting distribution (retry)", "err", err.Error(), "retry", i)
+				logger.Warn("(expected if unfrequent or at boot time) got error while persisting distribution (retry)", "err", err.Error(), "retry", i)
 				time.Sleep(100 * time.Millisecond)
 			} else {
 				return errors.Wrap(err, "got error while persisting distribution: domain=%s, tasklist=%s", request.DomainName, request.TaskList)
