@@ -23,6 +23,7 @@ func (d *DomainTasklistProcessRequest) String() string {
 
 // DomainTasklistProcessResponse is the response from processing a domain's tasklists.
 type DomainTasklistProcessResponse struct {
+	Partitions []int `json:"partitions"`
 }
 
 // DomainTasklistProcessor is responsible for managing the lifecycle of all tasklist processors
