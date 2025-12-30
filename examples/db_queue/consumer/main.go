@@ -143,8 +143,13 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 		close(work.CompletedChannel)
 	}()
 
+	tick := time.NewTicker(90 * time.Millisecond)
+	defer tick.Stop()
+
 	for {
 		select {
+		case <-tick.C:
+			return
 		case <-ctx.Done():
 			return
 		default:
