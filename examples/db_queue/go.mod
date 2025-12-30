@@ -9,6 +9,7 @@ require (
 	github.com/devlibx/gox-helix v0.0.0-00010101000000-000000000000
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/oklog/ulid/v2 v2.1.1
+	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	go.uber.org/fx v1.24.0
 	gopkg.in/yaml.v3 v3.0.1
 )

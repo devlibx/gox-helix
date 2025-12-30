@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	helix "github.com/devlibx/gox-helix"
 	"log"
 	"math/rand"
 	"sync"
@@ -16,10 +17,8 @@ import (
 )
 
 const (
-	// Number of concurrent goroutines to insert jobs.
-	numProducers = 5
-	// Number of jobs each producer will insert.
-	jobsPerProducer = 20000000
+	numProducers    = 5
+	jobsPerProducer = 1000000
 )
 
 // Configuration for the jobs to be created.
@@ -32,17 +31,20 @@ var jobConfig = map[string]map[string]int{
 }
 
 func main() {
-	// IMPORTANT: Replace with your actual database connection string.
-	// It is recommended to use environment variables or a config file for this.
-	// Example DSN: "user:password@tcp(127.0.0.1:3306)/database"
-	dsn := "root:credroot@tcp(127.0.0.1:3306)/automation?parseTime=true"
+	helix.SetupTestEnv()
+	dsn := helix.GetDefaultSqlUrl()
 
 	// Connect to the database.
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := db.Ping(); err != nil {
 		log.Fatalf("failed to ping database: %v", err)
@@ -67,6 +69,7 @@ func main() {
 			defer wg.Done()
 
 			for j := 0; j < jobsPerProducer; j++ {
+
 				// Generate a new ULID for the job under a lock to ensure uniqueness across goroutines.
 				mu.Lock()
 				jobID := ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
@@ -102,8 +105,6 @@ func main() {
 				if err != nil {
 					log.Printf("[Producer %d] failed to create job: %v\n", producerID, err)
 				}
-
-				time.Sleep(5 * time.Millisecond)
 			}
 		}(i)
 	}
