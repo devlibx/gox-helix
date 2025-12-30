@@ -1,59 +1,185 @@
-# Database Job Queue with gox-helix
+# DB Queue Example
 
-This example demonstrates how to build a scalable, database-backed job queue using `gox-helix`.
-It consists of two main parts:
-1.  A **Producer** that populates a `jobs` table in a MySQL database with tasks.
-2.  A **Consumer** built with `gox-helix` that concurrently processes these jobs, using database partitions to ensure that each job is processed exactly once without requiring row-level database locks.
+This example demonstrates a simple database-backed job queue using MySQL.
 
-## Prerequisites
-- Go 1.21+
-- A running MySQL 8.0 instance.
-- `sqlc` for code generation (the generated code is already checked in, but you'll need it if you modify the queries). You can install it via:
-  ```bash
-  go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-  ```
+## 1. Setup
 
-## How It Works
+First, create the `jobs` table in your MySQL database.
 
-The key idea is to leverage `gox-helix`'s partition management.
-1.  Jobs are inserted into the `jobs` table with a `partition_id`.
-2.  `gox-helix` assigns partitions to different consumer instances (workers).
-3.  Because `gox-helix` guarantees that only one worker can own a partition at any given time, our consumer can poll for jobs within its assigned partition (`WHERE partition_id = ?`) without needing to use `SELECT ... FOR UPDATE` or other locking mechanisms. This avoids lock contention and improves scalability.
+```sql
+-- The `jobs` table stores individual tasks to be processed by the workers.
+CREATE TABLE jobs
+(
+    -- The primary key, a ULID, which is lexicographically sortable and ideal for job queues.
+    id           VARCHAR(26) PRIMARY KEY,
 
-## Setup
+    -- The domain and tasklist categorize the job, used by gox-helix for routing.
+    domain       VARCHAR(64)  NOT NULL,
+    tasklist     VARCHAR(64)  NOT NULL,
 
-### 1. Create the `jobs` Table
-Connect to your MySQL instance (e.g., via `mysql -u root -pcredroot automation`) and run the schema definition to create the `jobs` table.
-You can find the schema at `examples/db_queue/database/schema.sql`.
+    -- The partition key. gox-helix ensures that only one worker processes a given partition at a time,
+    -- which is the basis for our lock-free queue processing.
+    partition_id INT UNSIGNED NOT NULL,
+
+    -- The status of the job.
+    -- 'pending': Ready to be picked up by a worker.
+    -- 'in_progress': Currently being processed by a worker.
+    -- 'completed': Successfully processed.
+    -- 'failed': An error occurred during processing.
+    status       VARCHAR(20)  NOT NULL DEFAULT 'pending',
+
+    -- The job's data, stored in JSON format.
+    payload      JSON         NOT NULL,
+
+    -- Standard timestamps for tracking.
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    -- Constraint to ensure the status is one of the allowed values.
+    CONSTRAINT status_check CHECK (status IN ('created', 'pending', 'in_progress', 'completed', 'failed')),
+
+    -- The primary index for our queue polling query.
+    -- This index allows workers to efficiently find the next pending job for a specific partition.
+    INDEX job_queue_idx (domain, tasklist, partition_id, status, id)
+);
+```
+
+## 2. Run Producer
+
+The producer inserts jobs into the `jobs` table.
 
 ```bash
-# Example: Pipe the schema directly if MySQL is accessible via CLI
-cat examples/db_queue/database/schema.sql | mysql -u root -pcredroot automation
+# Truncate the jobs table and run the producer
+mysql -u root -pcredroot -e "TRUNCATE TABLE automation.jobs;"; go run producer/main.go
 ```
 
-## How to Run
+## 3. Run Consumer
 
-### Step 1: Run the Job Producer
-The producer is a simple Go application that concurrently inserts thousands of jobs into the `jobs` table for the consumer to process.
+The consumer fetches and processes jobs from the `jobs` table. You can specify different algorithms for fetching the next job.
 
-Open a terminal and run:
 ```bash
-go run examples/db_queue/producer/main.go
+go run consumer/main.go --algo <algorithm>
 ```
-You will see logs indicating that jobs are being inserted. Wait for it to complete.
 
-### Step 2: Run the Job Consumer
-The consumer is a `gox-helix` worker that will connect to the database, get its assigned partitions, and start processing jobs from the queue.
+Replace `<algorithm>` with one of the following:
 
-Open another terminal and run:
+*   `GetNextJob`
+*   `GetNextJobForUpdate`
+*   `GetNextJobMin`
+*   `GetNextJobMinForUpdate`
+
+Example:
+
 ```bash
-go run examples/db_queue/consumer/main.go
+go run consumer/main.go --algo GetNextJobMin
 ```
 
-You will see logs from `gox-helix` as it starts up, followed by logs from the consumer as it processes jobs, for example:
-```
-INFO Processing job job_id=01J8X... producer_id=1...
-INFO Processing job job_id=01J8Y... producer_id=2...
+## 4. Consumer Algorithms
+
+Here are the different algorithms the consumer can use to fetch the next job, along with the corresponding SQL queries from `database/queries.sql`.
+
+### `GetNextJob`
+
+Retrieves the next pending job for a specific partition, ordered by ID.
+
+```sql
+-- name: GetNextJob :one
+-- Retrieves the next pending job for a specific partition, ordered by ID.
+-- This is the core query for our consumer.
+SELECT id
+FROM jobs
+WHERE domain = ?
+  AND tasklist = ?
+  AND partition_id = ?
+  AND status = 'created'
+ORDER BY domain, tasklist, partition_id, status, id ASC
+LIMIT 1;
 ```
 
-You can start multiple instances of the consumer, and `gox-helix` will automatically rebalance the partitions among them.
+### `GetNextJobForUpdate`
+
+Retrieves the next pending job for a specific partition using a pessimistic lock (`FOR UPDATE SKIP LOCKED`). This prevents other transactions from accessing the same job.
+
+```sql
+-- name: GetNextJobForUpdate :one
+-- Retrieves the next pending job for a specific partition using a pessimistic lock.
+SELECT id
+FROM jobs
+WHERE domain = ?
+  AND tasklist = ?
+  AND partition_id = ?
+  AND status = 'created'
+ORDER BY domain, tasklist, partition_id, status, id ASC
+LIMIT 1
+for
+update skip locked;
+```
+
+### `GetNextJobMin`
+
+Retrieves the next pending job for a specific partition using a `MIN(id)` subquery. This can be more efficient than `ORDER BY` and `LIMIT 1` in some cases.
+
+```sql
+-- name: GetNextJobMin :one
+-- Retrieves the next pending job for a specific partition using a MIN(id) subquery.
+SELECT MIN(id)
+FROM jobs
+WHERE domain = ?
+  AND tasklist = ?
+  AND partition_id = ?
+  AND status = 'created';
+```
+
+### `GetNextJobMinForUpdate`
+
+Retrieves the next pending job for a specific partition using a `MIN(id)` subquery and a pessimistic lock.
+
+```sql
+-- name: GetNextJobMinForUpdate :one
+-- Retrieves the next pending job for a specific partition using a MIN(id) subquery and a pessimistic lock.
+SELECT MIN(id)
+FROM jobs
+WHERE domain = ?
+  AND tasklist = ?
+  AND partition_id = ?
+  AND status = 'created' for
+update skip locked;
+```
+
+## 5. Results
+
+Here are some performance metrics for `GetNextJob` and `GetNextJobMin`.
+
+### `GetNextJob`
+
+```
+2025/12/31 00:32:01 INFO Flushing metrics algo=GetNextJob count=12531 rps=1253 99=2.435268ms 999=13.608824ms
+2025/12/31 00:32:11 INFO Flushing metrics algo=GetNextJob count=15378 rps=1537 99=2.690798ms 999=7.949665ms
+2025/12/31 00:32:21 INFO Flushing metrics algo=GetNextJob count=15061 rps=1506 99=2.605748ms 999=17.262827ms
+2025/12/31 00:32:31 INFO Flushing metrics algo=GetNextJob count=14354 rps=1435 99=2.413333ms 999=7.342532ms
+2025/12/31 00:32:41 INFO Flushing metrics algo=GetNextJob count=14621 rps=1462 99=2.587732ms 999=17.67804ms
+```
+
+### `GetNextJobMin`
+
+```
+2025/12/31 00:32:59 INFO Flushing metrics algo=GetNextJobMin count=13251 rps=1325 99=135.042µs 999=663.767µs
+2025/12/31 00:33:09 INFO Flushing metrics algo=GetNextJobMin count=377015 rps=37701 99=122.642µs 999=289.562µs
+2025/12/31 00:33:19 INFO Flushing metrics algo=GetNextJobMin count=377751 rps=37775 99=130.042µs 999=203.54µs
+2025/12/31 00:33:29 INFO Flushing metrics algo=GetNextJobMin count=385310 rps=38531 99=111.039µs 999=229.593µs
+2025/12/31 00:33:39 INFO Flushing metrics algo=GetNextJobMin count=356984 rps=35698 99=253.515µs 999=947.238µs
+2025/12/31 00:33:49 INFO Flushing metrics algo=GetNextJobMin count=375263 rps=37526 99=157.512µs 999=459.648µs
+2_025/12/31 00:33:59 INFO Flushing metrics algo=GetNextJobMin count=379581 rps=37958 99=131.995µs 999=271.462µs
+2025/12/31 00:34:09 INFO Flushing metrics algo=GetNextJobMin count=377992 rps=37799 99=111.205µs 999=332.964µs
+2025/12/31 00:34:19 INFO Flushing metrics algo=GetNextJobMin count=375610 rps=37561 99=130.35µs 999=229.615µs
+2025/12/31 00:34:29 INFO Flushing metrics algo=GetNextJobMin count=370017 rps=37001 99=145.461µs 999=748.969µs
+```
+
+### Analysis
+
+As you can see from the results, `GetNextJobMin` is significantly more performant than `GetNextJob`.
+
+*   **Throughput (rps):** `GetNextJobMin` achieves a throughput of ~37,000 requests per second, while `GetNextJob` only achieves ~1,500 rps. This is a performance improvement of over 20x.
+*   **Latency (99th percentile):** `GetNextJobMin` has a 99th percentile latency of ~130µs, while `GetNextJob` has a latency of ~2.6ms (2600µs). This means `GetNextJobMin` is about 20x faster.
+
+The reason for this performance difference is that `GetNextJobMin` uses a `MIN(id)` subquery, which is a more efficient way to find the next available job than using `ORDER BY ... LIMIT 1`. The `ORDER BY` clause requires the database to sort the rows before it can find the first one, which is a much more expensive operation. This demonstrates how a small change in the query can have a huge impact on performance, especially for high-throughput systems like job queues. In this case, `GetNextJobMin` is not just 8-10x better, but up to **20x better** in terms of both throughput and latency.
