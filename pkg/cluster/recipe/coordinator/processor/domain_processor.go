@@ -146,6 +146,7 @@ func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
 			)
 		}
 	}
+	d.activePartitions = make([]int, 0)
 	return nil
 }
 
