@@ -91,7 +91,13 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 		}
 	}
 
-	return &coordinator.DomainTasklistProcessResponse{}, nil
+	ret := make([]int, 0)
+	for _, task := range d.activePartitions {
+		ret = append(ret, task)
+	}
+	return &coordinator.DomainTasklistProcessResponse{
+		Partitions: ret,
+	}, nil
 }
 
 func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
