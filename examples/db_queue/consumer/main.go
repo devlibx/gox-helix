@@ -138,9 +138,6 @@ func main() {
 
 // processWork is the main function that consumes jobs from the database.
 func processWork(ctx context.Context, work coordinator.Work, queries *database.Queries, metricsCollector *MetricsCollectorV1, algo string) {
-	tick := time.NewTicker(100 * time.Millisecond)
-	defer tick.Stop()
-
 	defer func() {
 		work.CompletedChannel <- coordinator.WorkResponse{}
 		close(work.CompletedChannel)
@@ -149,8 +146,6 @@ func processWork(ctx context.Context, work coordinator.Work, queries *database.Q
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-tick.C:
 			return
 		default:
 			var err error

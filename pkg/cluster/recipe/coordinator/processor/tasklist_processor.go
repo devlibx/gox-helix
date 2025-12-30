@@ -160,9 +160,10 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 		default:
 			if lockHeld {
+				ctx, cancelFunc := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				completedCh := make(chan coordinator.WorkResponse, 1)
 				t.ClientFunctionProcessWork(
-					context.Background(),
+					ctx,
 					coordinator.Work{
 						Domain:           t.domain,
 						Tasklist:         t.tasklist,
@@ -172,12 +173,16 @@ func (t *tasklistProcessorImpl) processingLoop() {
 					},
 				)
 				select {
+				case <-ctx.Done():
+					cancelFunc()
 				case workResponse, ok := <-completedCh:
+					cancelFunc()
 					if ok && workResponse.Err != nil {
 						t.logger.Error("client failed to do the work", "err", workResponse.Err)
 						time.Sleep(10 * time.Millisecond)
 					}
 				case <-t.stopChan:
+					cancelFunc()
 					t.logger.Error("internal stop signal received, stopping tasklist processor")
 					return
 				}
