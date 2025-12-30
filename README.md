@@ -128,3 +128,90 @@ go run examples/integration/main.go
 ```
 
 The application will start, register the worker, and begin processing work for the defined domains and tasklists. You will see log messages indicating the work being done. The application also truncates the database tables on startup for a clean run.
+
+## Database Schema
+
+Before running the application, you need to set up the database. Create a database named `automation` and then run the following SQL statements to create the necessary tables.
+
+### `helix_locks`
+
+```sql
+CREATE TABLE helix_locks
+(
+    id           bigint unsigned NOT NULL AUTO_INCREMENT,
+    domain       VARCHAR(64)     NOT NULL,
+    lock_key     VARCHAR(255)    NOT NULL,
+    owner_id     VARCHAR(64)     NOT NULL,
+    expires_at   TIMESTAMP       NOT NULL,
+    epoch        bigint unsigned NOT NULL DEFAULT 0,
+    status       TINYINT         NOT NULL DEFAULT 1,
+    `created_at` datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `lock_key_status_unique_key` (`domain`, `lock_key`, `status`),
+    KEY `lock_key_ids` (`lock_key`)
+);
+```
+
+### `helix_worker_partition_mapping`
+
+```sql
+CREATE TABLE helix_worker_partition_mapping
+(
+    id         bigint unsigned NOT NULL AUTO_INCREMENT,
+    domain     VARCHAR(64)     NOT NULL,
+    tasklist   VARCHAR(64)     NOT NULL,
+    owner_id   VARCHAR(64)     NOT NULL,
+    status     tinyint         NOT NULL default 1,
+    metadata   TEXT            NULL,
+    created_at datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `domain_tasklist_key` (`domain`, `tasklist`, `owner_id`)
+);
+```
+
+### `helix_domain`
+
+```sql
+CREATE TABLE helix_domain
+(
+    id              bigint unsigned NOT NULL AUTO_INCREMENT,
+    domain          VARCHAR(64)     NOT NULL,
+    tasklist        VARCHAR(64)     NOT NULL,
+    metadata        TEXT            NULL,
+    partition_count INT UNSIGNED    NOT NULL DEFAULT 1,
+    status          TINYINT         NOT NULL DEFAULT 1,
+    created_at      datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`, `status`),
+    UNIQUE KEY `domain_tasklist_status_unique` (`domain`, `tasklist`, `status`)
+) PARTITION BY LIST (`status`) (
+    PARTITION p_active VALUES IN (1),
+    PARTITION p_inactive VALUES IN (0),
+    PARTITION p_deletable VALUES IN (2)
+    );
+```
+
+### `helix_workers`
+
+```sql
+CREATE TABLE helix_workers (
+    id BIGINT AUTO_INCREMENT,
+    worker_id VARCHAR(64) NOT NULL,
+    domain VARCHAR(64) NOT NULL,
+    status TINYINT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL,
+    last_heartbeat_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, created_at),
+    UNIQUE KEY uidx_domain_worker_id (domain, worker_id, created_at)
+)
+PARTITION BY RANGE (UNIX_TIMESTAMP(created_at)) (
+    PARTITION p2025_11 VALUES LESS THAN (UNIX_TIMESTAMP('2025-12-01 00:00:00')),
+    PARTITION p2025_12 VALUES LESS THAN (UNIX_TIMESTAMP('2026-01-01 00:00:00')),
+    PARTITION p2026_01 VALUES LESS THAN (UNIX_TIMESTAMP('2026-02-01 00:00:00')),
+    PARTITION p2026_02 VALUES LESS THAN (UNIX_TIMESTAMP('2026-03-01 00:00:00')),
+    PARTITION p_future VALUES LESS THAN (MAXVALUE)
+);
+```

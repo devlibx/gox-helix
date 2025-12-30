@@ -47,6 +47,9 @@ func (s *serviceImpl) registerDomainWorkerOnStart(ctx context.Context, domain *c
 
 func (s *serviceImpl) startPartitionDistributorOnStart(ctx context.Context, domain *config.Domain) error {
 	for _, tl := range domain.TaskLists {
+		if tl.Disabled {
+			continue
+		}
 		go func(domain *config.Domain, tasklist *config.TaskList) {
 			err := s.PartitionDistributionService.Process(ctx, coordinator.DistributionRequest{
 				DomainName: domain.Name,
