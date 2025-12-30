@@ -26,30 +26,31 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 	defer d.activePartitionsMutex.Unlock()
 
 	// Make sure we stopped any partitions which we no longer own first
-	for activePartition, _ := range d.activePartitions { // d.activePartitions {
+	for _, activePartitionValue := range d.activePartitions {
 
 		partitionIsStillActiveAssignedToMe := false
-		for newPartition, _ := range request.Partitions {
-			if newPartition == activePartition {
+		for _, newPartitionValue := range request.Partitions {
+			if newPartitionValue == activePartitionValue {
 				partitionIsStillActiveAssignedToMe = true
+				break // Found it, no need to continue inner loop
 			}
 		}
 
 		if !partitionIsStillActiveAssignedToMe {
-			if tp, ok := d.tasklistProcessor[activePartition]; ok {
+			if tp, ok := d.tasklistProcessor[activePartitionValue]; ok {
 
 				// Stop this tasklist processor
 				if err := tp.Stop(context.Background()); err != nil {
 					slog.Warn("DomainTasklistProcessor failed to stop partition processor (when we get new assignment, then we need to stop unassigned partitions)",
 						"domain", d.config.Domain,
 						"tasklist", d.config.TaskList,
-						"partition", activePartition,
+						"partition", activePartitionValue,
 						"err", err.Error(),
 					)
 				}
 
 				// Delete this partition processor
-				delete(d.tasklistProcessor, activePartition)
+				delete(d.tasklistProcessor, activePartitionValue)
 			}
 		}
 	}
@@ -90,7 +91,13 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 		}
 	}
 
-	return &coordinator.DomainTasklistProcessResponse{}, nil
+	ret := make([]int, 0)
+	for _, task := range d.activePartitions {
+		ret = append(ret, task)
+	}
+	return &coordinator.DomainTasklistProcessResponse{
+		Partitions: ret,
+	}, nil
 }
 
 func (d *domainTasklistProcessorImpl) Stop(ctx context.Context) error {
