@@ -49,9 +49,11 @@ func setupTest(t *testing.T) *testProcessorDeps {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func(ctx context.Context, work coordinator.Work) {
-				work.CompletedChannel <- coordinator.WorkResponse{}
-				close(work.CompletedChannel)
+			ClientFunctionProcessWork: func() coordinator.ClientFunctionProcessWorkFunc {
+				return func(ctx context.Context, work coordinator.Work) {
+					work.CompletedChannel <- coordinator.WorkResponse{}
+					close(work.CompletedChannel)
+				}
 			},
 		},
 		as,
@@ -134,9 +136,11 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func(ctx context.Context, work coordinator.Work) {
-				work.CompletedChannel <- coordinator.WorkResponse{}
-				close(work.CompletedChannel)
+			ClientFunctionProcessWork: func() coordinator.ClientFunctionProcessWorkFunc {
+				return func(ctx context.Context, work coordinator.Work) {
+					work.CompletedChannel <- coordinator.WorkResponse{}
+					close(work.CompletedChannel)
+				}
 			},
 		},
 		common.NewApplicationSingletonWithContext(context.Background()),
@@ -196,12 +200,14 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func(ctx context.Context, work coordinator.Work) {
-				t.Log("Got work on work channel", "work", work)
-				workDoneCounter++
-				time.Sleep(10 * time.Millisecond)
-				work.CompletedChannel <- coordinator.WorkResponse{}
-				close(work.CompletedChannel)
+			ClientFunctionProcessWork: func() coordinator.ClientFunctionProcessWorkFunc {
+				return func(ctx context.Context, work coordinator.Work) {
+					t.Log("Got work on work channel", "work", work)
+					workDoneCounter++
+					time.Sleep(10 * time.Millisecond)
+					work.CompletedChannel <- coordinator.WorkResponse{}
+					close(work.CompletedChannel)
+				}
 			},
 		},
 		deps.as,

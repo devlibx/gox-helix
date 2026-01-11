@@ -11,11 +11,13 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 	go.uber.org/fx v1.24.0
+	go.uber.org/ratelimit v0.3.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect

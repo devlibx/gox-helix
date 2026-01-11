@@ -71,37 +71,39 @@ func FullMain() {
 		fx.Invoke(executor.NewExecutorLifecycle),
 
 		fx.Provide(func(config *config.Config) coordinator.ClientFunctionProcessWork {
-			return func(ctx context.Context, work coordinator.Work) {
+			return func() coordinator.ClientFunctionProcessWorkFunc {
+				return func(ctx context.Context, work coordinator.Work) {
 
-				// Keep what all partitions are being used
-				mu.Lock()
-				key := work.Domain + "-" + work.Tasklist
-				if _, ok := part[key]; !ok {
-					part[key] = make(map[int]string)
-				}
-				part[key][work.Partition] = ""
-
-				if atomic.AddInt64(&count, 1)%20 == 0 {
-					slog.Info("Got work to do", "work", work)
-					for k, v := range part {
-						fmt.Println(k, v)
+					// Keep what all partitions are being used
+					mu.Lock()
+					key := work.Domain + "-" + work.Tasklist
+					if _, ok := part[key]; !ok {
+						part[key] = make(map[int]string)
 					}
+					part[key][work.Partition] = ""
 
-					for domainName, domainObj := range config.Domains {
-						for tasklistName, tasklistObj := range domainObj.TaskLists {
-							if p, ok := part[domainName+"-"+tasklistName]; ok {
-								if len(p) == tasklistObj.PartitionCount {
-									slog.Info("Full allocation found", "domain", domainName, "tasklist", tasklistName)
+					if atomic.AddInt64(&count, 1)%20 == 0 {
+						slog.Info("Got work to do", "work", work)
+						for k, v := range part {
+							fmt.Println(k, v)
+						}
+
+						for domainName, domainObj := range config.Domains {
+							for tasklistName, tasklistObj := range domainObj.TaskLists {
+								if p, ok := part[domainName+"-"+tasklistName]; ok {
+									if len(p) == tasklistObj.PartitionCount {
+										slog.Info("Full allocation found", "domain", domainName, "tasklist", tasklistName)
+									}
 								}
 							}
 						}
 					}
-				}
-				defer mu.Unlock()
+					defer mu.Unlock()
 
-				time.Sleep(100 * time.Millisecond)
-				work.CompletedChannel <- coordinator.WorkResponse{}
-				close(work.CompletedChannel)
+					time.Sleep(100 * time.Millisecond)
+					work.CompletedChannel <- coordinator.WorkResponse{}
+					close(work.CompletedChannel)
+				}
 			}
 		}),
 
@@ -157,4 +159,20 @@ func NewCleanupOnBootupProvider(lifecycle fx.Lifecycle, connectionHolder databas
 		},
 	})
 
+}
+
+type workerFunction struct {
+	Name string
+}
+
+func newWorkerFunction(name string) *workerFunction {
+	return &workerFunction{}
+}
+
+func (w *workerFunction) GetClientFunctionProcessWork() coordinator.ClientFunctionProcessWork {
+	return func() coordinator.ClientFunctionProcessWorkFunc {
+		return func(ctx context.Context, work coordinator.Work) {
+
+		}
+	}
 }
