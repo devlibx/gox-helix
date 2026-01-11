@@ -121,6 +121,8 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	ownershipTicker := time.NewTicker(time.Second)
 	defer ownershipTicker.Stop()
 
+	workerFunc := t.ClientFunctionProcessWork()
+
 	lockHeld := true
 	for {
 		select {
@@ -162,7 +164,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			if lockHeld {
 				ctx, cancelFunc := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				completedCh := make(chan coordinator.WorkResponse, 1)
-				t.ClientFunctionProcessWork(
+				workerFunc(
 					ctx,
 					coordinator.Work{
 						Domain:           t.domain,

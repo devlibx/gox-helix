@@ -121,9 +121,11 @@ func main() {
 
 		// Provide our custom job processing function to the container.
 		fx.Provide(func(mc *MetricsCollectorV1) coordinator.ClientFunctionProcessWork {
-			return func(ctx context.Context, work coordinator.Work) {
-				mc.algo = *algo
-				processWork(ctx, work, queries, mc, *algo)
+			return func() func(ctx context.Context, work coordinator.Work) {
+				return func(ctx context.Context, work coordinator.Work) {
+					mc.algo = *algo
+					processWork(ctx, work, queries, mc, *algo)
+				}
 			}
 		}),
 
