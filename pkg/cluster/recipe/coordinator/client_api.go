@@ -2,4 +2,6 @@ package coordinator
 
 import "context"
 
-type ClientFunctionProcessWork func(ctx context.Context, work Work)
+type ClientFunctionProcessWorkFunc func(ctx context.Context, work Work)
+
+type ClientFunctionProcessWork func() ClientFunctionProcessWorkFunc

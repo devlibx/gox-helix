@@ -121,6 +121,8 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	ownershipTicker := time.NewTicker(time.Second)
 	defer ownershipTicker.Stop()
 
+	workerFunc := t.ClientFunctionProcessWork()
+
 	lockHeld := true
 	for {
 		select {
@@ -162,7 +164,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			if lockHeld {
 				ctx, cancelFunc := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				completedCh := make(chan coordinator.WorkResponse, 1)
-				t.ClientFunctionProcessWork(
+				workerFunc(
 					ctx,
 					coordinator.Work{
 						Domain:           t.domain,
@@ -195,6 +197,9 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 // acquireInitialLock contains the logic to persistently try to acquire the distributed lock.
 func (t *tasklistProcessorImpl) acquireInitialLock() bool {
+	retryInterval := t.config.InitialLockAcquireRetryInterval
+	maxRetryInterval := time.Second
+
 	for {
 		// If we found that we already stopped then not need to continue
 		select {
@@ -219,8 +224,14 @@ func (t *tasklistProcessorImpl) acquireInitialLock() bool {
 
 		// Retry loc but also stop if we found we are stopped in middle
 		select {
-		case <-time.After(t.config.InitialLockAcquireRetryInterval):
-			// Sleep before we retry to capture lock again
+		case <-time.After(retryInterval):
+			// Exponential back-off retry (bounded by max retry interval)
+			// Why - suppose a worker died and has this lock. It makes take 5-10 sec to get the lock to expire
+			//       during that time makes sense to back-off
+			retryInterval *= 2
+			if retryInterval > maxRetryInterval {
+				retryInterval = maxRetryInterval
+			}
 		case <-t.stopChan:
 			t.logger.Error("stop signal received while waiting to retry to take initial acquisition, stopping initial lock acquire for tasklist processor")
 			return false
