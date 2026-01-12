@@ -49,7 +49,7 @@ func setupTest(t *testing.T) *testProcessorDeps {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func() coordinator.ClientFunctionProcessWorkFunc {
+			ClientFunctionProcessWork: func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
 				return func(ctx context.Context, work coordinator.Work) {
 					work.CompletedChannel <- coordinator.WorkResponse{}
 					close(work.CompletedChannel)
@@ -136,7 +136,7 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func() coordinator.ClientFunctionProcessWorkFunc {
+			ClientFunctionProcessWork: func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
 				return func(ctx context.Context, work coordinator.Work) {
 					work.CompletedChannel <- coordinator.WorkResponse{}
 					close(work.CompletedChannel)
@@ -200,7 +200,7 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 			TaskList:  "test-tasklist",
 			Partition: 1,
 			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func() coordinator.ClientFunctionProcessWorkFunc {
+			ClientFunctionProcessWork: func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
 				return func(ctx context.Context, work coordinator.Work) {
 					t.Log("Got work on work channel", "work", work)
 					workDoneCounter++
