@@ -121,7 +121,11 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	ownershipTicker := time.NewTicker(time.Second)
 	defer ownershipTicker.Stop()
 
-	workerFunc := t.ClientFunctionProcessWork()
+	workerFunc := t.ClientFunctionProcessWork(coordinator.ProcessWorkFuncInfo{
+		Domain:    t.domain,
+		Tasklist:  t.tasklist,
+		Partition: t.partition,
+	})
 
 	lockHeld := true
 	for {
