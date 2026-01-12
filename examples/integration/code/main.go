@@ -71,7 +71,7 @@ func FullMain() {
 		fx.Invoke(executor.NewExecutorLifecycle),
 
 		fx.Provide(func(config *config.Config) coordinator.ClientFunctionProcessWork {
-			return func() coordinator.ClientFunctionProcessWorkFunc {
+			return func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
 				return func(ctx context.Context, work coordinator.Work) {
 
 					// Keep what all partitions are being used
@@ -170,7 +170,7 @@ func newWorkerFunction(name string) *workerFunction {
 }
 
 func (w *workerFunction) GetClientFunctionProcessWork() coordinator.ClientFunctionProcessWork {
-	return func() coordinator.ClientFunctionProcessWorkFunc {
+	return func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
 		return func(ctx context.Context, work coordinator.Work) {
 
 		}
