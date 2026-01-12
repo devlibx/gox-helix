@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -101,6 +102,17 @@ type Work struct {
 
 func (w *Work) String() string {
 	return fmt.Sprintf("Work{Domain:%s, Tasklist:%s, Partition:%d, WorkerId=%s}", w.Domain, w.Tasklist, w.Partition, w.WorkerId)
+}
+
+func (w *Work) DeferFunc() {
+	func() {
+		if err := recover(); err != nil {
+			slog.Error("got error in work processing function (caught in defer)",
+				"domain", w.Domain, "tasklist", w.Tasklist, "partition", w.Partition, "worker_id", w.WorkerId, "error", err)
+		}
+		w.CompletedChannel <- WorkResponse{}
+		close(w.CompletedChannel)
+	}()
 }
 
 // WorkResponse is sent over the CompletedChannel to indicate the result of processing a Work unit.
