@@ -115,6 +115,17 @@ func (w *Work) DeferFunc() {
 	}()
 }
 
+func (w *Work) DeferFuncWithError(err error) {
+	func() {
+		if err := recover(); err != nil {
+			slog.Error("got error in work processing function (caught in defer)",
+				"domain", w.Domain, "tasklist", w.Tasklist, "partition", w.Partition, "worker_id", w.WorkerId, "error", err)
+		}
+		w.CompletedChannel <- WorkResponse{Err: err}
+		close(w.CompletedChannel)
+	}()
+}
+
 // WorkResponse is sent over the CompletedChannel to indicate the result of processing a Work unit.
 type WorkResponse struct {
 	// Err contains any error that occurred during the execution of the work.
