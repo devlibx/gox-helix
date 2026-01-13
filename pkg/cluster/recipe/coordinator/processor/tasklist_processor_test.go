@@ -3,10 +3,11 @@ package processor
 import (
 	"context"
 	"fmt"
-	"github.com/devlibx/gox-helix/pkg/common"
-	"go.uber.org/mock/gomock"
 	"testing"
 	"time"
+
+	"github.com/devlibx/gox-helix/pkg/common"
+	"go.uber.org/mock/gomock"
 
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
@@ -45,16 +46,11 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		mockLocker,
 		mockPartitionService,
 		&ProcessTasklistRequest{
-			Domain:    "test-domain",
-			TaskList:  "test-tasklist",
-			Partition: 1,
-			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
-				return func(ctx context.Context, work coordinator.Work) {
-					work.CompletedChannel <- coordinator.WorkResponse{}
-					close(work.CompletedChannel)
-				}
-			},
+			Domain:                 "test-domain",
+			TaskList:               "test-tasklist",
+			Partition:              1,
+			WorkerId:               "test-worker-id",
+			ClientFunctionProvider: coordinator.NewNoOpClientFunctionProvider(),
 		},
 		as,
 	)
@@ -77,6 +73,24 @@ func setupTest(t *testing.T) *testProcessorDeps {
 		processor:            p,
 		as:                   as,
 	}
+}
+
+type testClientFunctionProviderImpl struct {
+	workDoneCounter *int
+}
+
+func (t *testClientFunctionProviderImpl) Process(ctx context.Context, work coordinator.Work) {
+	*t.workDoneCounter++
+	time.Sleep(10 * time.Millisecond)
+	work.CompletedChannel <- coordinator.WorkResponse{}
+	close(work.CompletedChannel)
+}
+
+func (t *testClientFunctionProviderImpl) Shutdown(ctx context.Context) {
+}
+
+func (t *testClientFunctionProviderImpl) CreateWorkProcessFunction(ctx context.Context, info coordinator.CreateWorkProcessFunctionInfo) coordinator.ClientFunctionProcessor {
+	return t
 }
 
 func TestStart_Idempotency(t *testing.T) {
@@ -132,16 +146,11 @@ func TestApplicationStopSignal_ShutsDownProcessor(t *testing.T) {
 		mockLocker,
 		mockPartitionService,
 		&ProcessTasklistRequest{
-			Domain:    "test-domain",
-			TaskList:  "test-tasklist",
-			Partition: 1,
-			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
-				return func(ctx context.Context, work coordinator.Work) {
-					work.CompletedChannel <- coordinator.WorkResponse{}
-					close(work.CompletedChannel)
-				}
-			},
+			Domain:                 "test-domain",
+			TaskList:               "test-tasklist",
+			Partition:              1,
+			WorkerId:               "test-worker-id",
+			ClientFunctionProvider: coordinator.NewNoOpClientFunctionProvider(),
 		},
 		common.NewApplicationSingletonWithContext(context.Background()),
 	)
@@ -196,19 +205,11 @@ func TestProcessingLoop_SuspendsOnLockRefreshFailure(t *testing.T) {
 		deps.mockLocker,
 		mockPartitionService,
 		&ProcessTasklistRequest{
-			Domain:    "test-domain",
-			TaskList:  "test-tasklist",
-			Partition: 1,
-			WorkerId:  "test-worker-id",
-			ClientFunctionProcessWork: func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
-				return func(ctx context.Context, work coordinator.Work) {
-					t.Log("Got work on work channel", "work", work)
-					workDoneCounter++
-					time.Sleep(10 * time.Millisecond)
-					work.CompletedChannel <- coordinator.WorkResponse{}
-					close(work.CompletedChannel)
-				}
-			},
+			Domain:                 "test-domain",
+			TaskList:               "test-tasklist",
+			Partition:              1,
+			WorkerId:               "test-worker-id",
+			ClientFunctionProvider: &testClientFunctionProviderImpl{workDoneCounter: &workDoneCounter},
 		},
 		deps.as,
 	)
