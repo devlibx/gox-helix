@@ -2,6 +2,8 @@ package executor
 
 import (
 	"context"
+	"log/slog"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator/processor"
@@ -10,7 +12,6 @@ import (
 	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	"go.uber.org/fx"
-	"log/slog"
 )
 
 // Service is the main executor service which is responsible for managing the lifecycle of the workers.
@@ -44,8 +45,7 @@ type serviceImpl struct {
 	domainService                domain.Service
 	PartitionDistributionService coordinator.PartitionDistributionService
 	ProcessorFactory             processor.Factory
-
-	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
+	ClientFunctionProvider       coordinator.ClientFunctionProvider
 }
 
 func (s *serviceImpl) GetWorkerId() string {
@@ -61,7 +61,7 @@ func NewExecutor(
 	partitionService coordinator.PartitionService,
 	PartitionDistributionService coordinator.PartitionDistributionService,
 	ProcessorFactory processor.Factory,
-	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork,
+	ClientFunctionProvider coordinator.ClientFunctionProvider,
 	applicationSingleton *common.ApplicationSingleton,
 ) (Service, error) {
 	s := &serviceImpl{
@@ -73,7 +73,7 @@ func NewExecutor(
 		partitionService:             partitionService,
 		PartitionDistributionService: PartitionDistributionService,
 		ProcessorFactory:             ProcessorFactory,
-		ClientFunctionProcessWork:    ClientFunctionProcessWork,
+		ClientFunctionProvider:       ClientFunctionProvider,
 		applicationSingleton:         applicationSingleton,
 		workerId:                     applicationSingleton.GetWorkerId(),
 		logger:                       applicationSingleton.GetModuleLogger("executor"),

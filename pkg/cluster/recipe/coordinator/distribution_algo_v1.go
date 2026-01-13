@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
@@ -94,7 +95,7 @@ func (d distributorStrategyV1Impl) buildBucket(workersOwnerIds []string, partiti
 	}
 
 	// Assign them equally
-	for i := 0; i < partitionCount; i++ {
+	for i := 0; i < partitionCount && len(tempAlgorithmV1Bucket) > 0; i++ {
 		idx := i % len(tempAlgorithmV1Bucket)
 		tempAlgorithmV1Bucket[idx].MaxPartitionsAllowed = tempAlgorithmV1Bucket[idx].MaxPartitionsAllowed + 1
 	}

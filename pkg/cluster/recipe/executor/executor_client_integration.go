@@ -55,10 +55,10 @@ func (s *serviceImpl) runTaskProcessor(ctx context.Context, domain *config.Domai
 			if domainTasklistProcessor, err := s.ProcessorFactory.GetOrCreateDomainTasklistProcessor(
 				ctx,
 				processor.CreateDomainTasklistProcessorRequest{
-					Domain:                    domain.Name,
-					TaskList:                  tasklist.Name,
-					WorkerId:                  s.workerId,
-					ClientFunctionProcessWork: s.ClientFunctionProcessWork,
+					Domain:                 domain.Name,
+					TaskList:               tasklist.Name,
+					WorkerId:               s.workerId,
+					ClientFunctionProvider: s.ClientFunctionProvider,
 				},
 			); err != nil {
 				s.logger.Info("failed to get or create task list processor to process partitions", "domain", domain.Name, "tasklist", tasklist.Name, "partitions", partitions, "err", err.Error())
