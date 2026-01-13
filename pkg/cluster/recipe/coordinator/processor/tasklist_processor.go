@@ -3,22 +3,23 @@ package processor
 import (
 	"context"
 	"fmt"
-	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
-	"github.com/devlibx/gox-helix/pkg/common"
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
+	"github.com/devlibx/gox-helix/pkg/common"
 
 	"github.com/devlibx/gox-base/v2"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 )
 
 type ProcessTasklistRequest struct {
-	Domain                    string
-	TaskList                  string
-	Partition                 int
-	WorkerId                  string
-	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
+	Domain                 string
+	TaskList               string
+	Partition              int
+	WorkerId               string
+	ClientFunctionProvider coordinator.ClientFunctionProvider
 }
 
 // tasklistProcessorImpl is the concrete implementation of the TasklistProcessor.
@@ -40,7 +41,7 @@ type tasklistProcessorImpl struct {
 	stopChan chan struct{}
 	wg       sync.WaitGroup
 
-	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
+	clientFunctionProvider coordinator.ClientFunctionProvider
 }
 
 // NewTasklistProcessor creates a new tasklist processor instance.
@@ -54,17 +55,17 @@ func NewTasklistProcessor(
 	applicationSingleton *common.ApplicationSingleton,
 ) coordinator.TasklistProcessor {
 	p := &tasklistProcessorImpl{
-		CrossFunction:             cf,
-		config:                    config,
-		lockService:               lockService,
-		partitionService:          partitionService,
-		domain:                    request.Domain,
-		tasklist:                  request.TaskList,
-		partition:                 request.Partition,
-		ClientFunctionProcessWork: request.ClientFunctionProcessWork,
-		ownerId:                   request.WorkerId,
-		applicationSingleton:      applicationSingleton,
-		logger:                    applicationSingleton.GetModuleLogger("tasklist_processor").With("domain", request.Domain, "tasklist", request.TaskList, "partition", request.Partition),
+		CrossFunction:          cf,
+		config:                 config,
+		lockService:            lockService,
+		partitionService:       partitionService,
+		domain:                 request.Domain,
+		tasklist:               request.TaskList,
+		partition:              request.Partition,
+		clientFunctionProvider: request.ClientFunctionProvider,
+		ownerId:                request.WorkerId,
+		applicationSingleton:   applicationSingleton,
+		logger:                 applicationSingleton.GetModuleLogger("tasklist_processor").With("domain", request.Domain, "tasklist", request.TaskList, "partition", request.Partition),
 	}
 
 	return p
@@ -121,11 +122,17 @@ func (t *tasklistProcessorImpl) processingLoop() {
 	ownershipTicker := time.NewTicker(time.Second)
 	defer ownershipTicker.Stop()
 
-	workerFunc := t.ClientFunctionProcessWork(coordinator.ProcessWorkFuncInfo{
+	// Create a new processor function - make sure to shut it down when done
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	workerFunc := t.clientFunctionProvider.CreateWorkProcessFunction(ctx, coordinator.CreateWorkProcessFunctionInfo{
 		Domain:    t.domain,
 		Tasklist:  t.tasklist,
 		Partition: t.partition,
 	})
+	defer func() {
+		workerFunc.Shutdown(context.Background())
+	}()
 
 	lockHeld := true
 	for {
@@ -168,7 +175,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 			if lockHeld {
 				ctx, cancelFunc := context.WithTimeout(context.Background(), 100*time.Millisecond)
 				completedCh := make(chan coordinator.WorkResponse, 1)
-				workerFunc(
+				workerFunc.Process(
 					ctx,
 					coordinator.Work{
 						Domain:           t.domain,

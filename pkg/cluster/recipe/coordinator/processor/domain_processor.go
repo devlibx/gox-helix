@@ -2,12 +2,13 @@ package processor
 
 import (
 	"context"
+	"log/slog"
+	"sync"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/common"
-	"log/slog"
-	"sync"
 )
 
 // used to write test
@@ -89,11 +90,11 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 					d.lockService,
 					d.partitionService,
 					&ProcessTasklistRequest{
-						Domain:                    d.config.Domain,
-						TaskList:                  d.config.TaskList,
-						Partition:                 partition,
-						WorkerId:                  d.config.WorkerId,
-						ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
+						Domain:                 d.config.Domain,
+						TaskList:               d.config.TaskList,
+						Partition:              partition,
+						WorkerId:               d.config.WorkerId,
+						ClientFunctionProvider: d.config.ClientFunctionProcessWork,
 					},
 					d.applicationSingleton,
 				)
@@ -104,11 +105,11 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 					d.lockService,
 					d.partitionService,
 					&ProcessTasklistRequest{
-						Domain:                    d.config.Domain,
-						TaskList:                  d.config.TaskList,
-						Partition:                 partition,
-						WorkerId:                  d.config.WorkerId,
-						ClientFunctionProcessWork: d.config.ClientFunctionProcessWork,
+						Domain:                 d.config.Domain,
+						TaskList:               d.config.TaskList,
+						Partition:              partition,
+						WorkerId:               d.config.WorkerId,
+						ClientFunctionProvider: d.config.ClientFunctionProcessWork,
 					},
 					d.applicationSingleton,
 				)
@@ -154,7 +155,7 @@ type DomainTasklistProcessorCfg struct {
 	Domain                    string
 	TaskList                  string
 	WorkerId                  string
-	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
+	ClientFunctionProcessWork coordinator.ClientFunctionProvider
 }
 
 func NewDomainTasklistProcessor(

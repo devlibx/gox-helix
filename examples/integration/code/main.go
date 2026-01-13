@@ -5,6 +5,11 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/serialization"
 	helix "github.com/devlibx/gox-helix"
@@ -16,10 +21,6 @@ import (
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	"go.uber.org/fx"
-	"log/slog"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 //go:embed config.yaml
@@ -70,40 +71,10 @@ func FullMain() {
 		fx.Invoke(NewCleanupOnBootupProvider),
 		fx.Invoke(executor.NewExecutorLifecycle),
 
-		fx.Provide(func(config *config.Config) coordinator.ClientFunctionProcessWork {
-			return func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
-				return func(ctx context.Context, work coordinator.Work) {
-
-					// Keep what all partitions are being used
-					mu.Lock()
-					key := work.Domain + "-" + work.Tasklist
-					if _, ok := part[key]; !ok {
-						part[key] = make(map[int]string)
-					}
-					part[key][work.Partition] = ""
-
-					if atomic.AddInt64(&count, 1)%20 == 0 {
-						slog.Info("Got work to do", "work", work)
-						for k, v := range part {
-							fmt.Println(k, v)
-						}
-
-						for domainName, domainObj := range config.Domains {
-							for tasklistName, tasklistObj := range domainObj.TaskLists {
-								if p, ok := part[domainName+"-"+tasklistName]; ok {
-									if len(p) == tasklistObj.PartitionCount {
-										slog.Info("Full allocation found", "domain", domainName, "tasklist", tasklistName)
-									}
-								}
-							}
-						}
-					}
-					defer mu.Unlock()
-
-					time.Sleep(100 * time.Millisecond)
-					work.CompletedChannel <- coordinator.WorkResponse{}
-					close(work.CompletedChannel)
-				}
+		fx.Provide(func(config *config.Config) coordinator.ClientFunctionProvider {
+			return &testClientFunctionProviderImpl{
+				config: config,
+				count:  count,
 			}
 		}),
 
@@ -161,18 +132,45 @@ func NewCleanupOnBootupProvider(lifecycle fx.Lifecycle, connectionHolder databas
 
 }
 
-type workerFunction struct {
-	Name string
+type testClientFunctionProviderImpl struct {
+	config *config.Config
+	count  int64
 }
 
-func newWorkerFunction(name string) *workerFunction {
-	return &workerFunction{}
-}
+func (t *testClientFunctionProviderImpl) Process(ctx context.Context, work coordinator.Work) {
+	mu.Lock()
+	key := work.Domain + "-" + work.Tasklist
+	if _, ok := part[key]; !ok {
+		part[key] = make(map[int]string)
+	}
+	part[key][work.Partition] = ""
 
-func (w *workerFunction) GetClientFunctionProcessWork() coordinator.ClientFunctionProcessWork {
-	return func(info coordinator.ProcessWorkFuncInfo) coordinator.ClientFunctionProcessWorkFunc {
-		return func(ctx context.Context, work coordinator.Work) {
+	if atomic.AddInt64(&t.count, 1)%20 == 0 {
+		slog.Info("Got work to do", "work", work)
+		for k, v := range part {
+			fmt.Println(k, v)
+		}
 
+		for domainName, domainObj := range t.config.Domains {
+			for tasklistName, tasklistObj := range domainObj.TaskLists {
+				if p, ok := part[domainName+"-"+tasklistName]; ok {
+					if len(p) == tasklistObj.PartitionCount {
+						slog.Info("Full allocation found", "domain", domainName, "tasklist", tasklistName)
+					}
+				}
+			}
 		}
 	}
+	defer mu.Unlock()
+
+	time.Sleep(100 * time.Millisecond)
+	work.CompletedChannel <- coordinator.WorkResponse{}
+	close(work.CompletedChannel)
+}
+
+func (t *testClientFunctionProviderImpl) Shutdown(ctx context.Context) {
+}
+
+func (t *testClientFunctionProviderImpl) CreateWorkProcessFunction(ctx context.Context, info coordinator.CreateWorkProcessFunctionInfo) coordinator.ClientFunctionProcessor {
+	return t
 }

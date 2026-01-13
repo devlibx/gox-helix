@@ -3,18 +3,19 @@ package processor
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
 	locker "github.com/devlibx/gox-helix/pkg/cluster/recipe/lock"
 	"github.com/devlibx/gox-helix/pkg/common"
-	"sync"
 )
 
 type CreateDomainTasklistProcessorRequest struct {
-	Domain                    string
-	TaskList                  string
-	WorkerId                  string
-	ClientFunctionProcessWork coordinator.ClientFunctionProcessWork
+	Domain                 string
+	TaskList               string
+	WorkerId               string
+	ClientFunctionProvider coordinator.ClientFunctionProvider
 }
 
 type Factory interface {
@@ -47,7 +48,7 @@ func (f *factoryImpl) GetOrCreateDomainTasklistProcessor(ctx context.Context, re
 				Domain:                    request.Domain,
 				TaskList:                  request.TaskList,
 				WorkerId:                  request.WorkerId,
-				ClientFunctionProcessWork: request.ClientFunctionProcessWork,
+				ClientFunctionProcessWork: request.ClientFunctionProvider,
 			},
 			f.applicationSingleton,
 		)
