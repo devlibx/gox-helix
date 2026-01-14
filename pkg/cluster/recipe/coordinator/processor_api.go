@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -98,6 +99,7 @@ type Work struct {
 	WorkerId         string              `json:"worker_id"`
 	Partition        int                 `json:"partition"`
 	CompletedChannel chan<- WorkResponse `json:"-"`
+	WorkDoneOnce     *sync.Once          `json:"-"`
 }
 
 func (w *Work) String() string {
