@@ -183,6 +183,7 @@ func (t *tasklistProcessorImpl) processingLoop() {
 						WorkerId:         t.ownerId,
 						Partition:        t.partition,
 						CompletedChannel: completedCh,
+						WorkDoneOnce:     &sync.Once{},
 					},
 				)
 				select {
