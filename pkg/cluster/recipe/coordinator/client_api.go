@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 type CreateWorkProcessFunctionInfo struct {
@@ -14,6 +15,7 @@ type CreateWorkProcessFunctionInfo struct {
 type ClientFunctionProcessor interface {
 	Process(ctx context.Context, work Work)
 	Shutdown(ctx context.Context)
+	GetWaitTimeForWork(ctx context.Context, work Work) time.Duration
 }
 
 type ClientFunctionProvider interface {
@@ -34,7 +36,10 @@ func (r *noOpClientFunctionProvider) Process(ctx context.Context, work Work) {
 }
 
 func (r *noOpClientFunctionProvider) Shutdown(ctx context.Context) {
+}
 
+func (r *noOpClientFunctionProvider) GetWaitTimeForWork(ctx context.Context, work Work) time.Duration {
+	return time.Duration(100 * time.Millisecond)
 }
 
 func NewNoOpClientFunctionProvider() ClientFunctionProvider {
