@@ -173,19 +173,28 @@ func (t *tasklistProcessorImpl) processingLoop() {
 
 		default:
 			if lockHeld {
-				ctx, cancelFunc := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+				// Create a work and work resp channel to wait for
 				completedCh := make(chan coordinator.WorkResponse, 1)
-				workerFunc.Process(
-					ctx,
-					coordinator.Work{
-						Domain:           t.domain,
-						Tasklist:         t.tasklist,
-						WorkerId:         t.ownerId,
-						Partition:        t.partition,
-						CompletedChannel: completedCh,
-						WorkDoneOnce:     &sync.Once{},
-					},
-				)
+				work := coordinator.Work{
+					Domain:           t.domain,
+					Tasklist:         t.tasklist,
+					WorkerId:         t.ownerId,
+					Partition:        t.partition,
+					CompletedChannel: completedCh,
+					WorkDoneOnce:     &sync.Once{},
+				}
+
+				// How long to wait for work
+				waitTimeForWork := workerFunc.GetWaitTimeForWork(context.Background(), work)
+				if waitTimeForWork > 800*time.Millisecond {
+					waitTimeForWork = 800 * time.Millisecond
+				}
+
+				// Run work function with max wait time
+				ctx, cancelFunc := context.WithTimeout(context.Background(), waitTimeForWork)
+				workerFunc.Process(ctx, work)
+
 				select {
 				case <-ctx.Done():
 					cancelFunc()
