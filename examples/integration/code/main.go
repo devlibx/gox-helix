@@ -137,6 +137,10 @@ type testClientFunctionProviderImpl struct {
 	count  int64
 }
 
+func (t *testClientFunctionProviderImpl) GetWaitTimeForWork(ctx context.Context, work coordinator.Work) time.Duration {
+	return 100 * time.Millisecond
+}
+
 func (t *testClientFunctionProviderImpl) Process(ctx context.Context, work coordinator.Work) {
 	mu.Lock()
 	key := work.Domain + "-" + work.Tasklist

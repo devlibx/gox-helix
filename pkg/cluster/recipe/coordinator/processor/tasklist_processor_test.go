@@ -93,6 +93,10 @@ func (t *testClientFunctionProviderImpl) CreateWorkProcessFunction(ctx context.C
 	return t
 }
 
+func (t *testClientFunctionProviderImpl) GetWaitTimeForWork(ctx context.Context, work coordinator.Work) time.Duration {
+	return 100 * time.Millisecond
+}
+
 func TestStart_Idempotency(t *testing.T) {
 	deps := setupTest(t)
 
