@@ -10,11 +10,12 @@ import (
 )
 
 type HelixWorker struct {
-	ID              sql.NullInt64 `json:"id"`
-	WorkerID        string        `json:"worker_id"`
-	Domain          string        `json:"domain"`
-	Status          int8          `json:"status"`
-	LastHeartbeatAt time.Time     `json:"last_heartbeat_at"`
-	CreatedAt       time.Time     `json:"created_at"`
-	UpdatedAt       sql.NullTime  `json:"updated_at"`
+	ID              sql.NullInt64  `json:"id"`
+	WorkerID        string         `json:"worker_id"`
+	Domain          string         `json:"domain"`
+	Status          int8           `json:"status"`
+	InactiveReason  sql.NullString `json:"inactive_reason"`
+	LastHeartbeatAt time.Time      `json:"last_heartbeat_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       sql.NullTime   `json:"updated_at"`
 }

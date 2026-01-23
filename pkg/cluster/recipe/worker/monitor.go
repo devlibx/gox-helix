@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"github.com/devlibx/gox-base/v2"
+	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"log/slog"
 	"time"
 )
@@ -84,7 +86,10 @@ func (m *mysqlMonitor) markInactiveWorkers(ctx context.Context) {
 	cutoffTime := m.Now().Add(-m.config.DeadWorkerThreshold)
 
 	// Execute the query to mark workers as inactive
-	err := m.dataLayer.Querier.MarkInactiveWorkers(ctx, cutoffTime)
+	err := m.dataLayer.Querier.MarkInactiveWorkers(ctx, helixWorkerMysql.MarkInactiveWorkersParams{
+		InactiveReason:  sql.NullString{String: "marked inactive by monitor", Valid: true},
+		LastHeartbeatAt: cutoffTime,
+	})
 	if err != nil {
 		slog.Error("Failed to mark inactive workers", "error", err)
 	} else {

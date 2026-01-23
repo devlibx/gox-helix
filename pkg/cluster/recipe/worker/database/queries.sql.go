@@ -13,24 +13,27 @@ import (
 
 const deregisterWorker = `-- name: DeregisterWorker :exec
 UPDATE helix_workers
-SET status = 0
+SET status = 0,
+    inactive_reason = ?
 WHERE domain = ?
   AND worker_id = ?
 `
 
 type DeregisterWorkerParams struct {
-	Domain   string `json:"domain"`
-	WorkerID string `json:"worker_id"`
+	InactiveReason sql.NullString `json:"inactive_reason"`
+	Domain         string         `json:"domain"`
+	WorkerID       string         `json:"worker_id"`
 }
 
 // DeregisterWorker
 //
 //	UPDATE helix_workers
-//	SET status = 0
+//	SET status = 0,
+//	    inactive_reason = ?
 //	WHERE domain = ?
 //	  AND worker_id = ?
 func (q *Queries) DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error {
-	_, err := q.exec(ctx, q.deregisterWorkerStmt, deregisterWorker, arg.Domain, arg.WorkerID)
+	_, err := q.exec(ctx, q.deregisterWorkerStmt, deregisterWorker, arg.InactiveReason, arg.Domain, arg.WorkerID)
 	return err
 }
 
@@ -112,7 +115,7 @@ func (q *Queries) GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorke
 }
 
 const getWorkerByWorkerIdAndDomain = `-- name: GetWorkerByWorkerIdAndDomain :one
-SELECT id, worker_id, domain, status, last_heartbeat_at, created_at, updated_at
+SELECT id, worker_id, domain, status, inactive_reason, last_heartbeat_at, created_at, updated_at
 FROM helix_workers
 WHERE domain = ?
   and worker_id = ?
@@ -125,7 +128,7 @@ type GetWorkerByWorkerIdAndDomainParams struct {
 
 // GetWorkerByWorkerIdAndDomain
 //
-//	SELECT id, worker_id, domain, status, last_heartbeat_at, created_at, updated_at
+//	SELECT id, worker_id, domain, status, inactive_reason, last_heartbeat_at, created_at, updated_at
 //	FROM helix_workers
 //	WHERE domain = ?
 //	  and worker_id = ?
@@ -137,6 +140,7 @@ func (q *Queries) GetWorkerByWorkerIdAndDomain(ctx context.Context, arg GetWorke
 		&i.WorkerID,
 		&i.Domain,
 		&i.Status,
+		&i.InactiveReason,
 		&i.LastHeartbeatAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -171,19 +175,26 @@ func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams
 
 const markInactiveWorkers = `-- name: MarkInactiveWorkers :exec
 UPDATE helix_workers
-SET status = 0
+SET status = 0,
+    inactive_reason = ?
 WHERE last_heartbeat_at < ?
   AND status = 1
 `
 
+type MarkInactiveWorkersParams struct {
+	InactiveReason  sql.NullString `json:"inactive_reason"`
+	LastHeartbeatAt time.Time      `json:"last_heartbeat_at"`
+}
+
 // MarkInactiveWorkers
 //
 //	UPDATE helix_workers
-//	SET status = 0
+//	SET status = 0,
+//	    inactive_reason = ?
 //	WHERE last_heartbeat_at < ?
 //	  AND status = 1
-func (q *Queries) MarkInactiveWorkers(ctx context.Context, lastHeartbeatAt time.Time) error {
-	_, err := q.exec(ctx, q.markInactiveWorkersStmt, markInactiveWorkers, lastHeartbeatAt)
+func (q *Queries) MarkInactiveWorkers(ctx context.Context, arg MarkInactiveWorkersParams) error {
+	_, err := q.exec(ctx, q.markInactiveWorkersStmt, markInactiveWorkers, arg.InactiveReason, arg.LastHeartbeatAt)
 	return err
 }
 
