@@ -14,7 +14,10 @@ type Querier interface {
 	//
 	//  UPDATE helix_workers
 	//  SET status = 0,
-	//      inactive_reason = ?
+	//      inactive_reason = CASE
+	//          WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+	//          ELSE CONCAT(inactive_reason, ' -> ', ?)
+	//      END
 	//  WHERE domain = ?
 	//    AND worker_id = ?
 	DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error
@@ -50,7 +53,10 @@ type Querier interface {
 	//
 	//  UPDATE helix_workers
 	//  SET status = 0,
-	//      inactive_reason = ?
+	//      inactive_reason = CASE
+	//          WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+	//          ELSE CONCAT(inactive_reason, ' -> ', ?)
+	//      END
 	//  WHERE last_heartbeat_at < ?
 	//    AND status = 1
 	MarkInactiveWorkers(ctx context.Context, arg MarkInactiveWorkersParams) error

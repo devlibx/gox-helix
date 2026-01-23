@@ -47,6 +47,8 @@ type serviceImpl struct {
 	ProcessorFactory             processor.Factory
 	ClientFunctionProvider       coordinator.ClientFunctionProvider
 	workerMonitor                worker.Monitor
+
+	workers map[string]worker.Worker
 }
 
 func (s *serviceImpl) GetWorkerId() string {
@@ -80,6 +82,7 @@ func NewExecutor(
 		workerId:                     applicationSingleton.GetWorkerId(),
 		logger:                       applicationSingleton.GetModuleLogger("executor"),
 		workerMonitor:                workerMonitor,
+		workers:                      make(map[string]worker.Worker),
 	}
 	return s, nil
 }

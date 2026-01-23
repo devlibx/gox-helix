@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"fmt"
+
 	"github.com/devlibx/gox-base/v2/errors"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"github.com/devlibx/gox-helix/pkg/common/config"
@@ -14,6 +15,9 @@ func (s *serviceImpl) Stop(ctx context.Context) error {
 		if err := s.stopDomainOnStop(ctx, domain); err != nil {
 			return err
 		}
+	}
+	for _, w := range s.workers {
+		w.Stop()
 	}
 	return nil
 }

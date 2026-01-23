@@ -86,8 +86,10 @@ func (m *mysqlMonitor) markInactiveWorkers(ctx context.Context) {
 	cutoffTime := m.Now().Add(-m.config.DeadWorkerThreshold)
 
 	// Execute the query to mark workers as inactive
+	reason := "marked inactive by monitor"
 	err := m.dataLayer.Querier.MarkInactiveWorkers(ctx, helixWorkerMysql.MarkInactiveWorkersParams{
-		InactiveReason:  sql.NullString{String: "marked inactive by monitor", Valid: true},
+		InactiveReason:  sql.NullString{String: reason, Valid: true},
+		CONCAT:          reason,
 		LastHeartbeatAt: cutoffTime,
 	})
 	if err != nil {

@@ -14,13 +14,17 @@ import (
 const deregisterWorker = `-- name: DeregisterWorker :exec
 UPDATE helix_workers
 SET status = 0,
-    inactive_reason = ?
+    inactive_reason = CASE
+        WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+        ELSE CONCAT(inactive_reason, ' -> ', ?)
+    END
 WHERE domain = ?
   AND worker_id = ?
 `
 
 type DeregisterWorkerParams struct {
 	InactiveReason sql.NullString `json:"inactive_reason"`
+	CONCAT         interface{}    `json:"CONCAT"`
 	Domain         string         `json:"domain"`
 	WorkerID       string         `json:"worker_id"`
 }
@@ -29,11 +33,19 @@ type DeregisterWorkerParams struct {
 //
 //	UPDATE helix_workers
 //	SET status = 0,
-//	    inactive_reason = ?
+//	    inactive_reason = CASE
+//	        WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+//	        ELSE CONCAT(inactive_reason, ' -> ', ?)
+//	    END
 //	WHERE domain = ?
 //	  AND worker_id = ?
 func (q *Queries) DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error {
-	_, err := q.exec(ctx, q.deregisterWorkerStmt, deregisterWorker, arg.InactiveReason, arg.Domain, arg.WorkerID)
+	_, err := q.exec(ctx, q.deregisterWorkerStmt, deregisterWorker,
+		arg.InactiveReason,
+		arg.CONCAT,
+		arg.Domain,
+		arg.WorkerID,
+	)
 	return err
 }
 
@@ -176,13 +188,17 @@ func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams
 const markInactiveWorkers = `-- name: MarkInactiveWorkers :exec
 UPDATE helix_workers
 SET status = 0,
-    inactive_reason = ?
+    inactive_reason = CASE
+        WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+        ELSE CONCAT(inactive_reason, ' -> ', ?)
+    END
 WHERE last_heartbeat_at < ?
   AND status = 1
 `
 
 type MarkInactiveWorkersParams struct {
 	InactiveReason  sql.NullString `json:"inactive_reason"`
+	CONCAT          interface{}    `json:"CONCAT"`
 	LastHeartbeatAt time.Time      `json:"last_heartbeat_at"`
 }
 
@@ -190,11 +206,14 @@ type MarkInactiveWorkersParams struct {
 //
 //	UPDATE helix_workers
 //	SET status = 0,
-//	    inactive_reason = ?
+//	    inactive_reason = CASE
+//	        WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+//	        ELSE CONCAT(inactive_reason, ' -> ', ?)
+//	    END
 //	WHERE last_heartbeat_at < ?
 //	  AND status = 1
 func (q *Queries) MarkInactiveWorkers(ctx context.Context, arg MarkInactiveWorkersParams) error {
-	_, err := q.exec(ctx, q.markInactiveWorkersStmt, markInactiveWorkers, arg.InactiveReason, arg.LastHeartbeatAt)
+	_, err := q.exec(ctx, q.markInactiveWorkersStmt, markInactiveWorkers, arg.InactiveReason, arg.CONCAT, arg.LastHeartbeatAt)
 	return err
 }
 
