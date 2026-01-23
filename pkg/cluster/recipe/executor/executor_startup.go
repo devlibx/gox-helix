@@ -2,9 +2,11 @@ package executor
 
 import (
 	"context"
+	"time"
+
 	"github.com/devlibx/gox-base/v2/errors"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/coordinator"
-	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
+	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 )
 
@@ -39,14 +41,19 @@ func (s *serviceImpl) Start(ctx context.Context) error {
 }
 
 func (s *serviceImpl) registerDomainWorkerOnStart(ctx context.Context, domain *config.Domain) error {
-	if err := s.workerDataLayer.Querier.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
-		WorkerID:        s.workerId,
-		Domain:          domain.Name,
-		CreatedAt:       s.Now(),
-		LastHeartbeatAt: s.Now(),
-	}); err != nil {
+	w := worker.NewWorkerWithId(
+		s.CrossFunction,
+		worker.Config{
+			Domain:            domain.Name,
+			HeartbeatInterval: 1 * time.Second,
+		},
+		s.workerId,
+		s.workerDataLayer,
+	)
+	if err := w.Start(ctx); err != nil {
 		return errors.Wrap(err, "failed to register worker: domain=%s", domain.Name)
 	}
+	s.workers[domain.Name] = w
 	return nil
 }
 
