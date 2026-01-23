@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
@@ -86,8 +87,9 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 
 func (m *mysqlWorker) Stop() {
 	_ = m.dataLayer.Querier.DeregisterWorker(context.Background(), helixWorkerMysql.DeregisterWorkerParams{
-		Domain:   m.config.Domain,
-		WorkerID: m.id,
+		Domain:         m.config.Domain,
+		WorkerID:       m.id,
+		InactiveReason: sql.NullString{String: fmt.Sprintf("explicit deregister by %s on worker stop", m.id), Valid: true},
 	})
 }
 

@@ -7,14 +7,14 @@ package helixWorkerMysql
 import (
 	"context"
 	"database/sql"
-	"time"
 )
 
 type Querier interface {
 	//DeregisterWorker
 	//
 	//  UPDATE helix_workers
-	//  SET status = 0
+	//  SET status = 0,
+	//      inactive_reason = ?
 	//  WHERE domain = ?
 	//    AND worker_id = ?
 	DeregisterWorker(ctx context.Context, arg DeregisterWorkerParams) error
@@ -34,7 +34,7 @@ type Querier interface {
 	GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorkerRow, error)
 	//GetWorkerByWorkerIdAndDomain
 	//
-	//  SELECT id, worker_id, domain, status, last_heartbeat_at, created_at, updated_at
+	//  SELECT id, worker_id, domain, status, inactive_reason, last_heartbeat_at, created_at, updated_at
 	//  FROM helix_workers
 	//  WHERE domain = ?
 	//    and worker_id = ?
@@ -49,10 +49,11 @@ type Querier interface {
 	//MarkInactiveWorkers
 	//
 	//  UPDATE helix_workers
-	//  SET status = 0
+	//  SET status = 0,
+	//      inactive_reason = ?
 	//  WHERE last_heartbeat_at < ?
 	//    AND status = 1
-	MarkInactiveWorkers(ctx context.Context, lastHeartbeatAt time.Time) error
+	MarkInactiveWorkers(ctx context.Context, arg MarkInactiveWorkersParams) error
 	//RegisterWorker
 	//
 	//  INSERT INTO helix_workers (worker_id, domain, status, created_at, last_heartbeat_at)
