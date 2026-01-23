@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 
 	"github.com/devlibx/gox-base/v2"
@@ -38,6 +39,11 @@ type domainTasklistProcessorImpl struct {
 func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coordinator.DomainTasklistProcessRequest) (*coordinator.DomainTasklistProcessResponse, error) {
 	d.activePartitionsMutex.Lock()
 	defer d.activePartitionsMutex.Unlock()
+
+	before := make([]int, 0)
+	for _, activePartitionValue := range d.activePartitions {
+		before = append(before, activePartitionValue)
+	}
 
 	// Make sure we stopped any partitions which we no longer own first
 	for _, activePartitionValue := range d.activePartitions {
@@ -75,11 +81,21 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 		d.activePartitions = append(d.activePartitions, task)
 	}
 
+	// Create sorted copies for logging
+	activePartitionsSorted := make([]int, len(d.activePartitions))
+	copy(activePartitionsSorted, d.activePartitions)
+	sort.Ints(activePartitionsSorted)
+
+	beforeSorted := make([]int, len(before))
+	copy(beforeSorted, before)
+	sort.Ints(beforeSorted)
+
 	slog.Info("[HELIX_IMP] active partitions allocated to worker: ",
 		"domain", d.config.Domain,
 		"tasklist", d.config.TaskList,
 		"len", len(d.activePartitions),
-		"partitions", d.activePartitions,
+		"partitions", activePartitionsSorted,
+		"before", beforeSorted,
 	)
 
 	// Start all tasklist processors (for each active partitions)
