@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -35,8 +36,13 @@ func setupDb(t *testing.T) *testIndo {
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	database := os.Getenv("DB_NAME")
-	url := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, database)
-	db, err := sql.Open("mysql", url)
+	timezone := os.Getenv("TIMEZONE")
+
+	connectionUrl := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, database)
+	if timezone != "" {
+		connectionUrl = fmt.Sprintf("%s&loc=%s", connectionUrl, url.QueryEscape(timezone))
+	}
+	db, err := sql.Open("mysql", connectionUrl)
 	assert.NoError(t, err)
 
 	now := time.Now()

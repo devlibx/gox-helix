@@ -9,6 +9,7 @@ import (
 )
 
 func (s *serviceImpl) Stop(ctx context.Context) error {
+	s.workerMonitor.Stop()
 	for _, domain := range s.domainConfigs.Domains {
 		if err := s.stopDomainOnStop(ctx, domain); err != nil {
 			return err

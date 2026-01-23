@@ -41,3 +41,9 @@ FROM helix_workers
 WHERE domain = ?
   and worker_id = ?;
 
+-- name: MarkInactiveWorkers :exec
+UPDATE helix_workers
+SET status = 0
+WHERE last_heartbeat_at < ?
+  AND status = 1;
+
