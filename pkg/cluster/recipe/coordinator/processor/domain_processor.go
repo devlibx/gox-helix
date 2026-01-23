@@ -81,6 +81,7 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 		d.activePartitions = append(d.activePartitions, task)
 	}
 
+	// ------------ Start - Done for logging only ------------
 	// Create sorted copies for logging
 	activePartitionsSorted := make([]int, len(d.activePartitions))
 	copy(activePartitionsSorted, d.activePartitions)
@@ -90,13 +91,28 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 	copy(beforeSorted, before)
 	sort.Ints(beforeSorted)
 
-	slog.Info("[HELIX_IMP] active partitions allocated to worker: ",
-		"domain", d.config.Domain,
-		"tasklist", d.config.TaskList,
-		"len", len(d.activePartitions),
-		"partitions", activePartitionsSorted,
-		"before", beforeSorted,
-	)
+	// Check if allocations have changed
+	changed := false
+	if len(activePartitionsSorted) != len(beforeSorted) {
+		changed = true
+	} else {
+		for i := range activePartitionsSorted {
+			if activePartitionsSorted[i] != beforeSorted[i] {
+				changed = true
+				break
+			}
+		}
+	}
+	if changed {
+		slog.Info("[HELIX_IMP] active partitions allocated to worker: ",
+			"domain", d.config.Domain,
+			"tasklist", d.config.TaskList,
+			"len", len(d.activePartitions),
+			"partitions", activePartitionsSorted,
+			"before", beforeSorted,
+		)
+	}
+	// ------------ End - Done for logging only ------------
 
 	// Start all tasklist processors (for each active partitions)
 	// Important - if a tasklist processor is already started, it is a no-op
