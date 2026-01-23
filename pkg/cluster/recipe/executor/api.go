@@ -46,6 +46,7 @@ type serviceImpl struct {
 	PartitionDistributionService coordinator.PartitionDistributionService
 	ProcessorFactory             processor.Factory
 	ClientFunctionProvider       coordinator.ClientFunctionProvider
+	workerMonitor                worker.Monitor
 }
 
 func (s *serviceImpl) GetWorkerId() string {
@@ -63,6 +64,7 @@ func NewExecutor(
 	ProcessorFactory processor.Factory,
 	ClientFunctionProvider coordinator.ClientFunctionProvider,
 	applicationSingleton *common.ApplicationSingleton,
+	workerMonitor worker.Monitor,
 ) (Service, error) {
 	s := &serviceImpl{
 		CrossFunction:                cf,
@@ -77,6 +79,7 @@ func NewExecutor(
 		applicationSingleton:         applicationSingleton,
 		workerId:                     applicationSingleton.GetWorkerId(),
 		logger:                       applicationSingleton.GetModuleLogger("executor"),
+		workerMonitor:                workerMonitor,
 	}
 	return s, nil
 }

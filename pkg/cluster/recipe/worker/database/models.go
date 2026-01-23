@@ -14,7 +14,7 @@ type HelixWorker struct {
 	WorkerID        string        `json:"worker_id"`
 	Domain          string        `json:"domain"`
 	Status          int8          `json:"status"`
-	CreatedAt       time.Time     `json:"created_at"`
 	LastHeartbeatAt time.Time     `json:"last_heartbeat_at"`
+	CreatedAt       time.Time     `json:"created_at"`
 	UpdatedAt       sql.NullTime  `json:"updated_at"`
 }
