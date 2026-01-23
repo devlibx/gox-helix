@@ -75,6 +75,13 @@ func (d *domainTasklistProcessorImpl) Process(ctx context.Context, request coord
 		d.activePartitions = append(d.activePartitions, task)
 	}
 
+	slog.Info("[HELIX_IMP] active partitions allocated to worker: ",
+		"domain", d.config.Domain,
+		"tasklist", d.config.TaskList,
+		"len", len(d.activePartitions),
+		"partitions", d.activePartitions,
+	)
+
 	// Start all tasklist processors (for each active partitions)
 	// Important - if a tasklist processor is already started, it is a no-op
 	//    start and stop on tasklist processor is idempotent
