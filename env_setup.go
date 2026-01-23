@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -53,6 +54,11 @@ func GetDefaultSqlUrl() string {
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	dbName := os.Getenv("DB_NAME")
-	url := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, dbName)
-	return url
+	timezone := os.Getenv("TIMEZONE")
+
+	connectionUrl := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, dbName)
+	if timezone != "" {
+		connectionUrl = fmt.Sprintf("%s&loc=%s", connectionUrl, url.QueryEscape(timezone))
+	}
+	return connectionUrl
 }

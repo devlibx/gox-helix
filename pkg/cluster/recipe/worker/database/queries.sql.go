@@ -112,7 +112,7 @@ func (q *Queries) GetWorker(ctx context.Context, arg GetWorkerParams) (*GetWorke
 }
 
 const getWorkerByWorkerIdAndDomain = `-- name: GetWorkerByWorkerIdAndDomain :one
-SELECT id, worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+SELECT id, worker_id, domain, status, last_heartbeat_at, created_at, updated_at
 FROM helix_workers
 WHERE domain = ?
   and worker_id = ?
@@ -125,7 +125,7 @@ type GetWorkerByWorkerIdAndDomainParams struct {
 
 // GetWorkerByWorkerIdAndDomain
 //
-//	SELECT id, worker_id, domain, status, created_at, last_heartbeat_at, updated_at
+//	SELECT id, worker_id, domain, status, last_heartbeat_at, created_at, updated_at
 //	FROM helix_workers
 //	WHERE domain = ?
 //	  and worker_id = ?
@@ -137,8 +137,8 @@ func (q *Queries) GetWorkerByWorkerIdAndDomain(ctx context.Context, arg GetWorke
 		&i.WorkerID,
 		&i.Domain,
 		&i.Status,
-		&i.CreatedAt,
 		&i.LastHeartbeatAt,
+		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return &i, err
@@ -167,6 +167,24 @@ func (q *Queries) GetWorkerStatus(ctx context.Context, arg GetWorkerStatusParams
 	var status int8
 	err := row.Scan(&status)
 	return status, err
+}
+
+const markInactiveWorkers = `-- name: MarkInactiveWorkers :exec
+UPDATE helix_workers
+SET status = 0
+WHERE last_heartbeat_at < ?
+  AND status = 1
+`
+
+// MarkInactiveWorkers
+//
+//	UPDATE helix_workers
+//	SET status = 0
+//	WHERE last_heartbeat_at < ?
+//	  AND status = 1
+func (q *Queries) MarkInactiveWorkers(ctx context.Context, lastHeartbeatAt time.Time) error {
+	_, err := q.exec(ctx, q.markInactiveWorkersStmt, markInactiveWorkers, lastHeartbeatAt)
+	return err
 }
 
 const registerWorker = `-- name: RegisterWorker :exec

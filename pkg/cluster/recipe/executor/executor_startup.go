@@ -15,6 +15,11 @@ func (s *serviceImpl) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Start the worker monitor
+	if err := s.workerMonitor.Start(ctx); err != nil {
+		return errors.Wrap(err, "failed to start worker monitor")
+	}
+
 	// Register worker and start partition distributors
 	for _, domainCfg := range s.domainConfigs.Domains {
 		if domainCfg.Disabled == true {

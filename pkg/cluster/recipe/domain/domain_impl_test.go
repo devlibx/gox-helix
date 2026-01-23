@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 	"log/slog"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -66,8 +67,13 @@ func setupDomainTest(t *testing.T) *testDomainInfo {
 	host := os.Getenv("DB_HOST")
 	port := os.Getenv("DB_PORT")
 	dbName := os.Getenv("DB_NAME")
-	url := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, dbName)
-	db, err := sql.Open("mysql", url)
+	timezone := os.Getenv("TIMEZONE")
+
+	connectionUrl := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, password, host, port, dbName)
+	if timezone != "" {
+		connectionUrl = fmt.Sprintf("%s&loc=%s", connectionUrl, url.QueryEscape(timezone))
+	}
+	db, err := sql.Open("mysql", connectionUrl)
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {

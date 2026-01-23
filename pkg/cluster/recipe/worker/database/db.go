@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getWorkerStatusStmt, err = db.PrepareContext(ctx, getWorkerStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWorkerStatus: %w", err)
 	}
+	if q.markInactiveWorkersStmt, err = db.PrepareContext(ctx, markInactiveWorkers); err != nil {
+		return nil, fmt.Errorf("error preparing query MarkInactiveWorkers: %w", err)
+	}
 	if q.registerWorkerStmt, err = db.PrepareContext(ctx, registerWorker); err != nil {
 		return nil, fmt.Errorf("error preparing query RegisterWorker: %w", err)
 	}
@@ -73,6 +76,11 @@ func (q *Queries) Close() error {
 	if q.getWorkerStatusStmt != nil {
 		if cerr := q.getWorkerStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getWorkerStatusStmt: %w", cerr)
+		}
+	}
+	if q.markInactiveWorkersStmt != nil {
+		if cerr := q.markInactiveWorkersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing markInactiveWorkersStmt: %w", cerr)
 		}
 	}
 	if q.registerWorkerStmt != nil {
@@ -129,6 +137,7 @@ type Queries struct {
 	getWorkerStmt                    *sql.Stmt
 	getWorkerByWorkerIdAndDomainStmt *sql.Stmt
 	getWorkerStatusStmt              *sql.Stmt
+	markInactiveWorkersStmt          *sql.Stmt
 	registerWorkerStmt               *sql.Stmt
 	sendHeartbeatStmt                *sql.Stmt
 }
@@ -142,6 +151,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getWorkerStmt:                    q.getWorkerStmt,
 		getWorkerByWorkerIdAndDomainStmt: q.getWorkerByWorkerIdAndDomainStmt,
 		getWorkerStatusStmt:              q.getWorkerStatusStmt,
+		markInactiveWorkersStmt:          q.markInactiveWorkersStmt,
 		registerWorkerStmt:               q.registerWorkerStmt,
 		sendHeartbeatStmt:                q.sendHeartbeatStmt,
 	}
