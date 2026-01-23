@@ -3,6 +3,7 @@ CREATE TABLE helix_workers (
     worker_id VARCHAR(64) NOT NULL,
     domain VARCHAR(64) NOT NULL,
     status TINYINT NOT NULL DEFAULT 1,
+    inactive_reason TEXT DEFAULT NULL,
     last_heartbeat_at datetime NOT NULL,
     created_at datetime NOT NULL,
     updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

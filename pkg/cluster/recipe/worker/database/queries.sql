@@ -11,7 +11,8 @@ WHERE domain = ?
 
 -- name: DeregisterWorker :exec
 UPDATE helix_workers
-SET status = 0
+SET status = 0,
+    inactive_reason = ?
 WHERE domain = ?
   AND worker_id = ?;
 
@@ -43,7 +44,8 @@ WHERE domain = ?
 
 -- name: MarkInactiveWorkers :exec
 UPDATE helix_workers
-SET status = 0
+SET status = 0,
+    inactive_reason = ?
 WHERE last_heartbeat_at < ?
   AND status = 1;
 
