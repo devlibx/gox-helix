@@ -4,14 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
 	"github.com/google/uuid"
-	"log/slog"
-	"time"
 )
+
+var EnableWorkerHbLogging = false
 
 // mysqlWorker is the MySQL-based implementation of the worker.Worker interface.
 type mysqlWorker struct {
@@ -36,8 +39,22 @@ func NewWorker(cf gox.CrossFunction, config Config, dataLayer *DataLayer) Worker
 	}
 }
 
+// NewWorkerWithId is the constructor for the mysqlWorker.
+func NewWorkerWithId(cf gox.CrossFunction, config Config, id string, dataLayer *DataLayer) Worker {
+	return &mysqlWorker{
+		CrossFunction: cf,
+		id:            id,
+		config:        config,
+		dataLayer:     dataLayer,
+		stopChan:      make(chan struct{}),
+		isRunning:     false,
+	}
+}
+
 func (m *mysqlWorker) Start(ctx context.Context) error {
-	m.id = uuid.NewString()
+	if m.id == "" {
+		m.id = uuid.NewString()
+	}
 	err := m.dataLayer.Querier.RegisterWorker(ctx, helixWorkerMysql.RegisterWorkerParams{
 		WorkerID:        m.id,
 		Domain:          m.config.Domain,
@@ -55,6 +72,9 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 		for {
 			select {
 			case <-ctx.Done():
+				if EnableWorkerHbLogging {
+					slog.Info("[worker-logging] stopping worker on ctx done", slog.String("worker-id", m.id))
+				}
 				goto exit
 			case <-ticker.C:
 				result, err := m.dataLayer.Querier.SendHeartbeat(context.Background(), helixWorkerMysql.SendHeartbeatParams{
@@ -64,12 +84,19 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 				})
 				if err == nil {
 					if count, err := result.RowsAffected(); err == nil && count == 0 {
+						if EnableWorkerHbLogging {
+							slog.Info("[worker-logging] send heartbeat but found zero update", slog.String("worker-id", m.id))
+						}
 						if w, err := m.dataLayer.Querier.GetWorker(context.Background(), helixWorkerMysql.GetWorkerParams{
 							Domain:   m.config.Domain,
 							WorkerID: m.id,
 						}); err == nil && w.Status != databaseCommon.WorkerStatusActive {
 							slog.Warn("(worker is inactive) failed to send heartbeat", "domain", m.config.Domain, "worker_id", m.id)
 							goto exit
+						}
+					} else {
+						if EnableWorkerHbLogging {
+							slog.Info("[worker-logging] send heartbeat with success", slog.String("worker-id", m.id))
 						}
 					}
 				} else {
@@ -86,10 +113,12 @@ func (m *mysqlWorker) Start(ctx context.Context) error {
 }
 
 func (m *mysqlWorker) Stop() {
+	reason := fmt.Sprintf("explicit deregister by %s on worker stop", m.id)
 	_ = m.dataLayer.Querier.DeregisterWorker(context.Background(), helixWorkerMysql.DeregisterWorkerParams{
 		Domain:         m.config.Domain,
 		WorkerID:       m.id,
-		InactiveReason: sql.NullString{String: fmt.Sprintf("explicit deregister by %s on worker stop", m.id), Valid: true},
+		InactiveReason: sql.NullString{String: reason, Valid: true},
+		CONCAT:         reason,
 	})
 }
 

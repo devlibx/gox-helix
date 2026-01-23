@@ -12,7 +12,10 @@ WHERE domain = ?
 -- name: DeregisterWorker :exec
 UPDATE helix_workers
 SET status = 0,
-    inactive_reason = ?
+    inactive_reason = CASE
+        WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+        ELSE CONCAT(inactive_reason, ' -> ', ?)
+    END
 WHERE domain = ?
   AND worker_id = ?;
 
@@ -45,7 +48,10 @@ WHERE domain = ?
 -- name: MarkInactiveWorkers :exec
 UPDATE helix_workers
 SET status = 0,
-    inactive_reason = ?
+    inactive_reason = CASE
+        WHEN inactive_reason IS NULL OR inactive_reason = '' THEN ?
+        ELSE CONCAT(inactive_reason, ' -> ', ?)
+    END
 WHERE last_heartbeat_at < ?
   AND status = 1;
 
