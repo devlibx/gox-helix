@@ -2,6 +2,8 @@ package goxHelixApi
 
 import (
 	"context"
+	"time"
+
 	"github.com/devlibx/gox-base/v2"
 	"github.com/devlibx/gox-base/v2/errors"
 	"github.com/devlibx/gox-helix/pkg/cluster/recipe/worker"
@@ -9,7 +11,6 @@ import (
 	"github.com/devlibx/gox-helix/pkg/common"
 	"github.com/devlibx/gox-helix/pkg/common/config"
 	databaseCommon "github.com/devlibx/gox-helix/pkg/common/database"
-	"time"
 )
 
 type HealthCheck struct {
@@ -33,11 +34,11 @@ func (h *HealthCheck) Check() error {
 		}
 
 		if hw.Status != databaseCommon.WorkerStatusActive {
-			return errors.Wrap(err, "worker is not active: domain=%s, worker_id=%s, status=%d", domain.Name, h.applicationSingleton.GetWorkerId(), hw.Status)
+			return errors.New("worker is not active: domain=%s, worker_id=%s, status=%d", domain.Name, h.applicationSingleton.GetWorkerId(), hw.Status)
 		}
 
 		if hw.LastHeartbeatAt.Before(h.Now().Add(-1 * time.Minute)) {
-			return errors.Wrap(err, "worker is heartbeat is old: domain=%s, worker_id=%s, status=%d, last_heartbeat_at=%v, now=%v", domain.Name, h.applicationSingleton.GetWorkerId(), hw.Status, hw.LastHeartbeatAt, h.Now())
+			return errors.New("worker is heartbeat is old: domain=%s, worker_id=%s, status=%d, last_heartbeat_at=%v, now=%v", domain.Name, h.applicationSingleton.GetWorkerId(), hw.Status, hw.LastHeartbeatAt, h.Now())
 		}
 	}
 	return nil
