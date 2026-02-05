@@ -31,15 +31,19 @@ func (r *noOpClientFunctionProvider) CreateWorkProcessFunction(ctx context.Conte
 }
 
 func (r *noOpClientFunctionProvider) Process(ctx context.Context, work Work) {
-	work.CompletedChannel <- WorkResponse{}
-	close(work.CompletedChannel)
+	defer work.WorkDoneOnce.Do(func() {
+		work.DeferFunc()
+	})
+	select {
+	case <-ctx.Done():
+	}
 }
 
 func (r *noOpClientFunctionProvider) Shutdown(ctx context.Context) {
 }
 
 func (r *noOpClientFunctionProvider) GetWaitTimeForWork(ctx context.Context, work Work) time.Duration {
-	return time.Duration(100 * time.Millisecond)
+	return time.Duration(500 * time.Millisecond)
 }
 
 func NewNoOpClientFunctionProvider() ClientFunctionProvider {
