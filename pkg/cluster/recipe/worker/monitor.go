@@ -3,11 +3,14 @@ package worker
 import (
 	"context"
 	"database/sql"
-	"github.com/devlibx/gox-base/v2"
-	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 	"log/slog"
 	"time"
+
+	"github.com/devlibx/gox-base/v2"
+	helixWorkerMysql "github.com/devlibx/gox-helix/pkg/cluster/recipe/worker/database"
 )
+
+var DisableMarkWorkerInactiveMonitor = false
 
 // Monitor is responsible for maintaining the health of the worker cluster by marking
 // stale workers as inactive. It periodically runs a check to identify workers that
@@ -82,6 +85,12 @@ func (m *mysqlMonitor) Stop() {
 }
 
 func (m *mysqlMonitor) markInactiveWorkers(ctx context.Context) {
+
+	if DisableMarkWorkerInactiveMonitor {
+		slog.Info("***Skipping marking workers in inactive monitor**** - it is disabled by setting DisableMarkWorkerInactiveMonitor=ture")
+		return
+	}
+
 	// Calculate the cutoff time. Any worker with a last_heartbeat_at before this time is considered dead.
 	cutoffTime := m.Now().Add(-m.config.DeadWorkerThreshold)
 
